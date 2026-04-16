@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "protrac-backend"
+version = "0.1.0"
+description = "An API backend for protrac."
+authors = ["Hojayfa Rahman <hojayfarahman@gmail.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+django = "^5.2.1"
+dj-database-url = "^3.0.0"
+django-cors-headers = "^4.6.0"
+python-dotenv = "^1.0.1"
+django-unfold = "^0.59.0"
+pillow-avif-plugin = "^1.4.6"
+pillow = "^11.1.0"
+psycopg2 = "^2.9.10"
+djangorestframework = "^3.16.0"
+drf-spectacular = "^0.28.0"
+django-filter = "^25.1"
+djangorestframework-simplejwt = "^5.5.0"
+gunicorn = "^23.0.0"
+pendulum = "^3.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+pytest-django = "^4.11.1"
+pytest-cov = "^6.1.1"
+factory-boy = "^3.3.3"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "core.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+addopts = ["--strict-markers", "--strict-config", "--verbose", "--tb=short"]
+testpaths = ["accounts", "common", "tracking"]

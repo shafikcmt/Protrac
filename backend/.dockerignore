@@ -1,0 +1,52 @@
+# Python byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Development/IDE files
+.git
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+.DS_Store
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+.mypy_cache/
+
+# Project specific
+staticfiles/
+media/
+*.sqlite3
+*.db
+node_modules/
+tailwind_theme/static/css/dist/*
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.docker/
+
+# Documentation
+README.md
+docs/
+*.md
