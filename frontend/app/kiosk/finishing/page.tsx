@@ -4,7 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useFinishingDashboard } from "@/hooks/api";
 import { StatsCards } from "./stats-cards";
-import { ChartsGrid } from "./charts-grid";
+import { OrdersTable } from "./orders-table";
 import { useFinishingChartData } from "./use-finishing-chart-data";
 import { useKioskFilters } from "../kiosk-context";
 
@@ -58,9 +58,9 @@ export default function FinishingKioskPage() {
         summaryStats={summaryStats}
       />
 
-      {/* Charts Grid */}
-      <ChartsGrid
-        chartData={chartData}
+      {/* Orders Table */}
+      <OrdersTable
+        finishingOrders={finishingOrders}
         isLoading={isLoading}
       />
 

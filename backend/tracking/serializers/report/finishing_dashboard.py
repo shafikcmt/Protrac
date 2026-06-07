@@ -85,6 +85,11 @@ class FinishingOrderDashboardSerializer(serializers.Serializer):
         allow_blank=True,
         help_text="Order size name"
     )
+    delivery_date = serializers.DateField(
+        required=False,
+        allow_null=True,
+        help_text="Order delivery date"
+    )
     completion_rate = serializers.FloatField(
         required=False,
         help_text="Completion rate (0.0 to 1.0)"

@@ -128,17 +128,18 @@ def _calculate_finishing_order_metrics(order: Order) -> Dict[str, Any]:
     completion_rate = output_count / total_input if total_input > 0 else 0
 
     return {
-    "id": order.id,
-    "order_number": order.order_number,
-    "customer_name": order.style.buyer.name,
-    "style_name": order.style.name,
-    "size_name": order.size.name if order.size else None,
-    "input_garments": input_count,
-    "output_garments": output_count,
-    "in_progress_garments": input_count - output_count,
-    "completion_rate": round(completion_rate, 3),
-    "qc_stats": qc_stats,
-    "source_lines": source_lines,
+        "id": order.id,
+        "order_number": order.order_number,
+        "customer_name": order.style.buyer.name,
+        "style_name": order.style.name,
+        "size_name": order.size.name if order.size else None,
+        "delivery_date": order.delivery_date.isoformat() if order.delivery_date else None,
+        "input_garments": input_count,
+        "output_garments": output_count,
+        "in_progress_garments": input_count - output_count,
+        "completion_rate": round(completion_rate, 3),
+        "qc_stats": qc_stats,
+        "source_lines": source_lines,
     }
 
 
