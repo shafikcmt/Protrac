@@ -30,7 +30,7 @@ import { useLineTargets } from "./use-line-targets";
 import { createLineTargetsTableConfig } from "./line-targets-table-config";
 import { LineTargetForm } from "./line-target-form";
 import { LineTargetDeleteDialog } from "./line-target-delete-dialog";
-import { BulkLineTargetForm } from "./bulk-line-target-form";
+import { BulkLineTargetDialog } from "./bulk-line-target-dialog";
 import { schemas } from "@/types/api/client";
 
 type LineTarget = z.infer<typeof schemas.LineTarget>;
@@ -70,6 +70,7 @@ export default function LineTargetsPage() {
   });
 
   // Modal states
+  const [bulkFormOpen, setBulkFormOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedLineTarget, setSelectedLineTarget] =
@@ -79,10 +80,7 @@ export default function LineTargetsPage() {
   );
 
   // Action handlers
-  const handleCreateLineTarget = () => {
-    setSelectedLineTarget(null);
-    setFormOpen(true);
-  };
+  const handleOpenBulkForm = () => setBulkFormOpen(true);
 
   const handleEditLineTarget = (lineTarget: LineTarget) => {
     setSelectedLineTarget(lineTarget);
@@ -120,7 +118,7 @@ export default function LineTargetsPage() {
 
   // Create table configuration
   const tableConfig = createLineTargetsTableConfig(
-    handleCreateLineTarget,
+    handleOpenBulkForm,
     handleEditLineTarget,
     handleDeleteLineTarget,
     handleBulkDeleteLineTargets
@@ -259,14 +257,6 @@ export default function LineTargetsPage() {
             )}
           </div>
 
-          {/* Bulk Line Target Form */}
-          <BulkLineTargetForm
-            sewingLines={productionLines}
-            existingTargets={lineTargets}
-            onSave={bulkUpsertLineTargets}
-            isSaving={isBulkUpserting}
-          />
-
           {/* Data Table */}
           <DataTable
             columns={tableConfig.columns}
@@ -274,6 +264,15 @@ export default function LineTargetsPage() {
             config={tableConfig}
           />
         </div>
+
+        <BulkLineTargetDialog
+          open={bulkFormOpen}
+          onOpenChange={setBulkFormOpen}
+          sewingLines={productionLines}
+          existingTargets={lineTargets}
+          onSave={bulkUpsertLineTargets}
+          isSaving={isBulkUpserting}
+        />
 
         <LineTargetForm
           open={formOpen}
