@@ -6,7 +6,6 @@ import {
   type BreadcrumbItem,
 } from "@/components/app/app-layout";
 import { OverviewStats } from "./overview-stats";
-import { QuickActions } from "./quick-actions";
 import { DailyTargetsCard } from "@/components/dashboard/daily-targets-card";
 
 export default function Page() {
@@ -35,8 +34,6 @@ export default function Page() {
             <DailyTargetsCard />
           </div>
 
-          {/* Quick Actions Grid */}
-          <QuickActions />
         </div>
       </AppContent>
     </div>

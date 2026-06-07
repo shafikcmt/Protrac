@@ -31,7 +31,9 @@ export function useTodayLineTargets() {
   );
 
   const lineTargets = lineTargetsData?.results || [];
-  const productionLines = productionLinesData?.results || [];
+  const productionLines = (productionLinesData?.results || []).filter(
+    (l: any) => l.line_type === "sewing"
+  );
   const totalLines = productionLines.length;
   const linesWithTargets = lineTargets.length;
   const totalTargetQuantity = lineTargets.reduce(
