@@ -1,19 +1,4 @@
-import {
-  Loader,
-  Activity,
-  CheckCircle,
-  XCircle,
-  Target,
-  BarChart3,
-} from "lucide-react";
-import {
-  Card,
-  CardAction,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface StatsCardsProps {
   chartData: {
@@ -41,139 +26,85 @@ interface StatsCardsProps {
   };
 }
 
-export function StatsCards({ chartData, summaryStats }: StatsCardsProps) {
+interface StatCardProps {
+  label: string;
+  value: string;
+  colorClass: string;
+  borderClass: string;
+}
+
+function StatCard({ label, value, colorClass, borderClass }: StatCardProps) {
   return (
-    <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs @container/main">
-      {/* Total Input */}
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Total Input</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {summaryStats.totalInput.toLocaleString()}
-          </CardTitle>
-          <CardAction>
-            <Badge variant="secondary">
-              <BarChart3 className="h-4 w-4 mr-1" />
-              Input
-            </Badge>
-          </CardAction>
-        </CardHeader>
-      </Card>
+    <div
+      className={cn(
+        "rounded-xl border-t-4 px-6 py-4 bg-card shadow-sm flex flex-col gap-1",
+        borderClass
+      )}
+    >
+      <span
+        className={cn(
+          "text-xs font-bold uppercase tracking-widest",
+          colorClass
+        )}
+      >
+        {label}
+      </span>
+      <span className="text-5xl font-black tabular-nums leading-none">
+        {value}
+      </span>
+    </div>
+  );
+}
 
-      {/* Total Output */}
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Total Output</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {summaryStats.totalOutput.toLocaleString()}
-          </CardTitle>
-          <CardAction>
-            <Badge variant="secondary">
-              <Target className="h-4 w-4 mr-1" />
-              Output
-            </Badge>
-          </CardAction>
-        </CardHeader>
-      </Card>
+export function StatsCards({ chartData, summaryStats }: StatsCardsProps) {
+  const totalQcChecks = chartData.qualityCheck.reduce(
+    (sum, item) => sum + item.qc_pass + item.qc_fail + item.qc_rework,
+    0
+  );
+  const totalQcPass = chartData.qualityCheck.reduce(
+    (sum, item) => sum + item.qc_pass,
+    0
+  );
+  const qcPassRate =
+    totalQcChecks > 0 ? (totalQcPass / totalQcChecks) * 100 : null;
 
-      {/* Total WIP */}
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Total WIP</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {summaryStats.totalWip.toLocaleString()}
-          </CardTitle>
-          <CardAction>
-            <Badge variant="secondary">
-              <Activity className="h-4 w-4 mr-1" />
-              WIP
-            </Badge>
-          </CardAction>
-        </CardHeader>
-      </Card>
+  const completionPct =
+    summaryStats.avgCompletionRate >= 0
+      ? `${(summaryStats.avgCompletionRate * 100).toFixed(1)}%`
+      : "N/A";
 
-      {/* Completion */}
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>Completion Rate</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {summaryStats.avgCompletionRate >= 0
-              ? `${(summaryStats.avgCompletionRate * 100).toFixed(1)}%`
-              : "N/A"}
-          </CardTitle>
-          <CardAction>
-            <Badge variant="secondary">
-              <Loader className="h-4 w-4 mr-1" />
-              Progress
-            </Badge>
-          </CardAction>
-        </CardHeader>
-      </Card>
-
-      {/* QC Pass Rate */}
-      <Card className="@container/card">
-        <CardHeader>
-          <CardDescription>QC Pass Rate</CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            {(() => {
-              const totalQcChecks = chartData.qualityCheck.reduce(
-                (sum, item) =>
-                  sum + item.qc_pass + item.qc_fail + item.qc_rework,
-                0
-              );
-
-              if (totalQcChecks === 0) return "N/A";
-
-              const passRate =
-                (chartData.qualityCheck.reduce(
-                  (sum, item) => sum + item.qc_pass,
-                  0
-                ) /
-                  totalQcChecks) *
-                100;
-
-              return `${passRate.toFixed(1)}%`;
-            })()}
-          </CardTitle>
-          <CardAction>
-            {(() => {
-              const totalQcChecks = chartData.qualityCheck.reduce(
-                (sum, item) =>
-                  sum + item.qc_pass + item.qc_fail + item.qc_rework,
-                0
-              );
-
-              if (totalQcChecks === 0) {
-                return (
-                  <Badge variant="secondary">
-                    <Activity className="h-4 w-4 mr-1" />
-                    Pending
-                  </Badge>
-                );
-              }
-
-              const passRate =
-                (chartData.qualityCheck.reduce(
-                  (sum, item) => sum + item.qc_pass,
-                  0
-                ) /
-                  totalQcChecks) *
-                100;
-
-              return (
-                <Badge variant={passRate >= 95 ? "default" : "destructive"}>
-                  {passRate >= 95 ? (
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                  ) : (
-                    <XCircle className="h-4 w-4 mr-1" />
-                  )}
-                  {passRate >= 95 ? "Excellent" : "Review"}
-                </Badge>
-              );
-            })()}
-          </CardAction>
-        </CardHeader>
-      </Card>
+  return (
+    <div className="grid grid-cols-5 gap-4 shrink-0">
+      <StatCard
+        label="Total Input"
+        value={summaryStats.totalInput.toLocaleString()}
+        colorClass="text-blue-600 dark:text-blue-400"
+        borderClass="border-blue-500"
+      />
+      <StatCard
+        label="Total Output"
+        value={summaryStats.totalOutput.toLocaleString()}
+        colorClass="text-green-600 dark:text-green-400"
+        borderClass="border-green-500"
+      />
+      <StatCard
+        label="Total WIP"
+        value={summaryStats.totalWip.toLocaleString()}
+        colorClass="text-amber-600 dark:text-amber-400"
+        borderClass="border-amber-500"
+      />
+      <StatCard
+        label="Completion"
+        value={completionPct}
+        colorClass="text-purple-600 dark:text-purple-400"
+        borderClass="border-purple-500"
+      />
+      <StatCard
+        label="QC Pass Rate"
+        value={qcPassRate !== null ? `${qcPassRate.toFixed(1)}%` : "N/A"}
+        colorClass="text-teal-600 dark:text-teal-400"
+        borderClass="border-teal-500"
+      />
     </div>
   );
 }
