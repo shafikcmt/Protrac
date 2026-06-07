@@ -11,6 +11,10 @@ import {
   Shirt,
   PanelTop,
   BadgeCheck,
+  Target,
+  Zap,
+  AlertTriangle,
+  RefreshCw as RefreshCwIcon,
 } from "lucide-react";
 
 type WipTone =
@@ -156,13 +160,13 @@ const flatKpiBase =
   "relative rounded-[20px] overflow-hidden border shadow-[0_10px_24px_rgba(0,0,0,0.22)] h-full";
 
 const flatKpiTitle =
-  "px-4 py-2.5 text-center text-[16px] md:text-[18px] xl:text-[19px] font-black uppercase tracking-[0.08em] leading-none [text-shadow:0_1px_0_rgba(0,0,0,0.12)]";
+  "px-4 py-2.5 text-center text-lg font-bold uppercase tracking-widest opacity-70 leading-none border-b";
 
 const flatKpiValue =
-  "px-4 pt-1 pb-0 text-center text-[42px] md:text-[48px] xl:text-[54px] leading-none font-black tabular-nums";
+  "px-4 pt-2 pb-0 text-center text-[54px] md:text-[64px] xl:text-[72px] leading-none font-black tabular-nums";
 
 const flatKpiSub =
-  "pt-1 pb-3 text-center text-[13px] md:text-[14px] xl:text-[15px] font-black uppercase tracking-[0.08em] opacity-95";
+  "pt-1.5 pb-3 text-center text-xl font-semibold opacity-60";
 
 const targetWrap =
   "h-full min-h-0 overflow-hidden rounded-[22px] border border-white/10 bg-[linear-gradient(180deg,rgba(7,15,30,0.96),rgba(8,18,35,0.98))] shadow-[0_10px_28px_rgba(0,0,0,0.28)]";
@@ -173,11 +177,11 @@ const targetTopStrip =
 const thBase =
   "relative overflow-hidden text-white font-black uppercase tracking-[0.05em] [text-shadow:0_1px_6px_rgba(0,0,0,0.22)]";
 
-const thHours = "bg-[linear-gradient(180deg,#2a6a89,#22556f)] text-left";
-const thTarget = "bg-[linear-gradient(180deg,#41afe2,#2d8ec0)] text-right";
-const thCumTarget = "bg-[linear-gradient(180deg,#e6b92b,#bf9318)] text-right";
-const thActual = "bg-[linear-gradient(180deg,#67cdbf,#45aea2)] text-right";
-const thCumActual = "bg-[linear-gradient(180deg,#3b6488,#2c4c67)] text-right";
+const thHours = "bg-slate-700 text-left";
+const thTarget = "bg-slate-700 text-right";
+const thCumTarget = "bg-slate-700 text-right";
+const thActual = "bg-slate-700 text-right";
+const thCumActual = "bg-slate-700 text-right";
 
 const cellBase = "border-b border-white/8 font-bold";
 
@@ -192,11 +196,11 @@ const tdActual =
 const tdCumActual =
   "bg-[linear-gradient(180deg,rgba(42,60,84,0.96),rgba(34,49,70,0.96))] text-white";
 
-const tdTotalHours = "bg-[linear-gradient(180deg,#294261,#203650)] text-white";
-const tdTotalTarget = "bg-[linear-gradient(180deg,#4d89b0,#3a6d90)] text-white";
-const tdTotalCumTarget = "bg-[linear-gradient(180deg,#b48d21,#8e6f15)] text-white";
-const tdTotalActual = "bg-[linear-gradient(180deg,#4aa79f,#3b8f88)] text-white";
-const tdTotalCumActual = "bg-[linear-gradient(180deg,#314f6e,#233a52)] text-white";
+const tdTotalHours = "bg-slate-700 text-white";
+const tdTotalTarget = "bg-slate-700 text-white";
+const tdTotalCumTarget = "bg-slate-700 text-white";
+const tdTotalActual = "bg-slate-700 text-white";
+const tdTotalCumActual = "bg-slate-700 text-white";
 
 function FlatInfoKpiCard({
   title,
@@ -206,6 +210,7 @@ function FlatInfoKpiCard({
   titleClass,
   valueClass,
   subClass,
+  icon,
 }: {
   title: string;
   value: React.ReactNode;
@@ -214,10 +219,16 @@ function FlatInfoKpiCard({
   titleClass?: string;
   valueClass?: string;
   subClass?: string;
+  icon?: React.ReactNode;
 }) {
   return (
-    <Card className={cn(flatKpiBase, cardClass)}>
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),transparent_45%)] pointer-events-none" />
+    <Card className={cn(flatKpiBase, "min-h-[220px]", cardClass)}>
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_45%)] pointer-events-none" />
+      {icon && (
+        <div className="absolute top-5 right-5 opacity-10 w-20 h-20 pointer-events-none">
+          {icon}
+        </div>
+      )}
       <div className={cn(flatKpiTitle, titleClass)}>{title}</div>
 
       <CardContent className="p-0 min-h-[112px] flex flex-col items-center justify-center">
@@ -251,10 +262,9 @@ function WipRow({
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-[18px] border transition-all duration-300",
-        "border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.018))]",
-        "shadow-[0_8px_20px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.05)]",
-        compact ? "px-3.5 py-2.5" : "px-4 py-3"
+        "group relative overflow-hidden rounded-xl border transition-all duration-300",
+        "border-white/10 bg-slate-800/30 dark:bg-slate-800/50",
+        compact ? "px-4 py-2.5" : "px-4 py-3"
       )}
     >
       <div className="pointer-events-none absolute inset-y-0 left-0 w-[3px] rounded-l-[18px] bg-white/8" />
@@ -287,8 +297,8 @@ function WipRow({
           <div className="min-w-0">
             <div
               className={cn(
-                "truncate font-black tracking-[0.01em] text-white leading-none [text-shadow:0_2px_8px_rgba(0,0,0,0.30)]",
-                compact ? "text-[14px]" : "text-[15px]"
+                "truncate font-bold tracking-[0.01em] text-white leading-none [text-shadow:0_2px_8px_rgba(0,0,0,0.30)]",
+                "text-lg"
               )}
             >
               {label}
@@ -307,7 +317,7 @@ function WipRow({
             className={cn(
               "relative overflow-hidden rounded-full border shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
               toneStyle.rail,
-              compact ? "h-4" : "h-4.5"
+              "h-3"
             )}
           >
             <div
@@ -325,7 +335,7 @@ function WipRow({
           className={cn(
             "rounded-[12px] border text-center tabular-nums font-black leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_4px_10px_rgba(0,0,0,0.14)]",
             toneStyle.chip,
-            compact ? "px-3 py-2 text-[16px]" : "px-3 py-2 text-[17px]"
+            "px-3 py-2 text-2xl"
           )}
         >
           {value.toLocaleString()}
@@ -448,58 +458,62 @@ const tdNum =
 
   return (
     <div className="h-full w-full p-2 text-white">
-      <div className="grid h-full grid-rows-[200px_minmax(0,1fr)] gap-2">
+      <div className="grid h-full grid-rows-[220px_minmax(0,1fr)] gap-2">
         <div className="grid h-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <FlatInfoKpiCard
             title="Target / Actual"
             value={
               <div className="flex items-center justify-center gap-3">
-                <span className="text-[#1e1e1e] drop-shadow-[0_1px_0_rgba(255,255,255,0.28)]">
+                <span className="text-slate-800 dark:text-white">
                   {Math.round(kpi.target).toLocaleString()}
                 </span>
-                <span className="text-[#6e6e6e] text-[28px] md:text-[32px] xl:text-[36px] leading-none">
+                <span className="text-slate-400 dark:text-white/40 text-[28px] md:text-[32px] xl:text-[36px] leading-none">
                   /
                 </span>
-                <span className="text-[#111] drop-shadow-[0_1px_0_rgba(255,255,255,0.18)]">
+                <span className="text-slate-800 dark:text-white">
                   {Math.round(kpi.actual).toLocaleString()}
                 </span>
               </div>
             }
             subtitle={`A: ${Math.round(kpi.actual).toLocaleString()} • T: ${Math.round(kpi.target).toLocaleString()}`}
-            cardClass="border-[#c7c9cf] bg-[linear-gradient(180deg,#ececec_0%,#d8d8d8_100%)]"
-            titleClass="bg-[linear-gradient(180deg,#d9d9d9_0%,#c9c9c9_100%)] text-[#2b2b2b] border-b border-[#b8b8b8]"
-            valueClass="text-[#222]"
-            subClass="text-[#555]"
+            icon={<Target className="w-full h-full" />}
+            cardClass="border-slate-200 bg-white dark:border-white/10 dark:bg-gradient-to-br dark:from-slate-800 dark:to-slate-900 shadow-2xl rounded-2xl"
+            titleClass="bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-white/70 border-b border-slate-200 dark:border-white/10"
+            valueClass="text-slate-800 dark:text-white"
+            subClass="text-slate-500 dark:text-white/60"
           />
 
           <FlatInfoKpiCard
             title="Efficiency"
-            value={<span className="text-white">{efficiency.toFixed(1)}%</span>}
+            value={<span className="text-green-700 dark:text-white">{efficiency.toFixed(1)}%</span>}
             subtitle="Today"
-            cardClass="border-[#43a44b] bg-[linear-gradient(135deg,#58c15a_0%,#45a94d_100%)]"
-            titleClass="bg-[linear-gradient(180deg,#4aa84b_0%,#3f9443_100%)] text-white border-b border-[#357c38]"
-            valueClass="text-white"
-            subClass="text-white/90"
+            icon={<Zap className="w-full h-full" />}
+            cardClass="border-green-200 bg-green-50 dark:border-green-600/40 dark:bg-gradient-to-br dark:from-green-900 dark:to-slate-900 shadow-2xl rounded-2xl"
+            titleClass="bg-green-100 dark:bg-green-800/40 text-green-800 dark:text-green-200/70 border-b border-green-200 dark:border-green-700/30"
+            valueClass="text-green-700 dark:text-white"
+            subClass="text-green-600 dark:text-green-300/60"
           />
 
           <FlatInfoKpiCard
             title="DHU"
-            value={<span className="text-white">{dhu.toFixed(1)}%</span>}
+            value={<span className="text-purple-700 dark:text-white">{dhu.toFixed(1)}%</span>}
             subtitle="Today"
-            cardClass="border-[#8b48ef] bg-[linear-gradient(135deg,#a855f7_0%,#8b46ea_100%)]"
-            titleClass="bg-[linear-gradient(180deg,#9a50f3_0%,#7d41d6_100%)] text-white border-b border-[#6b35b9]"
-            valueClass="text-white"
-            subClass="text-white/90"
+            icon={<AlertTriangle className="w-full h-full" />}
+            cardClass="border-purple-200 bg-purple-50 dark:border-purple-600/40 dark:bg-gradient-to-br dark:from-purple-900 dark:to-slate-900 shadow-2xl rounded-2xl"
+            titleClass="bg-purple-100 dark:bg-purple-800/40 text-purple-800 dark:text-purple-200/70 border-b border-purple-200 dark:border-purple-700/30"
+            valueClass="text-purple-700 dark:text-white"
+            subClass="text-purple-600 dark:text-purple-300/60"
           />
 
           <FlatInfoKpiCard
             title="Rework Qty"
-            value={<span className="text-white">{Math.round(reworkQty).toLocaleString()}</span>}
+            value={<span className="text-orange-700 dark:text-white">{Math.round(reworkQty).toLocaleString()}</span>}
             subtitle={`${reworkPct.toFixed(1)}% • Today`}
-            cardClass="border-[#e28a12] bg-[linear-gradient(135deg,#ffa200_0%,#f38b00_100%)]"
-            titleClass="bg-[linear-gradient(180deg,#f19500_0%,#dd7d00_100%)] text-white border-b border-[#bf6800]"
-            valueClass="text-white"
-            subClass="text-white/90"
+            icon={<RefreshCwIcon className="w-full h-full" />}
+            cardClass="border-orange-200 bg-orange-50 dark:border-orange-600/40 dark:bg-gradient-to-br dark:from-orange-900 dark:to-slate-900 shadow-2xl rounded-2xl"
+            titleClass="bg-orange-100 dark:bg-orange-800/40 text-orange-800 dark:text-orange-200/70 border-b border-orange-200 dark:border-orange-700/30"
+            valueClass="text-orange-700 dark:text-white"
+            subClass="text-orange-600 dark:text-orange-300/60"
           />
         </div>
 
@@ -549,8 +563,9 @@ const tdNum =
                         <tr
                         key={r.serial}
                         className={cn(
-                            idx % 2 === 0 ? "bg-white/[0.015]" : "bg-transparent",
-                            "hover:bg-white/[0.035] transition-colors duration-200"
+                            "h-[52px]",
+                            idx % 2 === 0 ? "bg-slate-900/60" : "bg-slate-800/40",
+                            "hover:bg-slate-700/40 transition-colors duration-200"
                         )}
                         >
                         <td className={cn(cellBase, tdHours, tdPad)}>
@@ -580,13 +595,11 @@ const tdNum =
                         <div className="flex justify-end">
                           <span
                             className={cn(
-                              "inline-flex min-w-[72px] justify-center rounded-full border px-4 py-1",
-                              "text-[20px] font-black leading-none tabular-nums tracking-[-0.02em]",
-                              "text-white [text-shadow:0_1px_8px_rgba(0,0,0,0.55)]",
-                              "shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_6px_14px_rgba(0,0,0,0.18)]",
+                              "inline-flex min-w-[72px] justify-center rounded-full border px-3 py-1",
+                              "text-lg font-black leading-none tabular-nums",
                               ok
-                                ? "border-emerald-200/28 bg-[linear-gradient(180deg,rgba(52,211,153,0.26),rgba(16,185,129,0.20))]"
-                                : "border-rose-200/28 bg-[linear-gradient(180deg,rgba(251,113,133,0.26),rgba(225,29,72,0.20))]"
+                                ? "border-green-500/30 bg-green-500/20 text-green-400"
+                                : "border-red-500/30 bg-red-500/20 text-red-400"
                             )}
                           >
                             {r.actual}
@@ -606,7 +619,7 @@ const tdNum =
                 </table>
             </div>
 
-            <div className="shrink-0 border-t border-white/10">
+            <div className="shrink-0 border-t-2 border-slate-500">
                 <table className="w-full table-fixed border-collapse text-white">
                 <tfoot>
                     <tr>

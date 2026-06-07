@@ -346,21 +346,29 @@ export function SewingStatsFilters({
         </PopoverContent>
       </Popover>
 
-      {/* Active Only Toggle */}
-      <Button
-        variant="outline"
-        size="sm"
+      {/* Active Only Toggle — div instead of Button to avoid button-in-button (Checkbox renders as <button>) */}
+      <div
+        role="button"
+        tabIndex={0}
         className={cn(
-          "h-8 border-dashed",
-          filters.active_only ? "bg-primary/10 border-primary/30" : ""
+          "inline-flex items-center h-8 px-3 rounded-md text-sm font-medium border border-dashed cursor-pointer select-none transition-colors",
+          "bg-background hover:bg-accent hover:text-accent-foreground",
+          filters.active_only ? "bg-primary/10 border-primary/30" : "border-input"
         )}
-        onClick={() => handleActiveOnlyChange(!filters.active_only)}>
+        onClick={() => handleActiveOnlyChange(!filters.active_only)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleActiveOnlyChange(!filters.active_only);
+          }
+        }}
+      >
         <Checkbox
           checked={filters.active_only || false}
           className="mr-2 h-4 w-4 pointer-events-none"
         />
         Active Only
-      </Button>
+      </div>
 
       {/* Clear Filters */}
       {activeFiltersCount > 0 && (

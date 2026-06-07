@@ -54,8 +54,8 @@ export default function SlideThree({
 
   const headPad = compact ? "px-3 py-2.5" : "px-4 py-3";
   const rowPad = compact ? "px-3 py-2" : "px-4 py-2.5";
-  const headText = compact ? "text-[16px]" : "text-[18px]";
-  const bodyText = compact ? "text-[19px]" : "text-[22px]";
+  const headText = compact ? "text-[18px]" : "text-[20px]";
+  const bodyText = compact ? "text-[22px]" : "text-[26px]";
 
 const dhuTone = (dhu: number) => {
   if (dhu <= 2) {
@@ -178,13 +178,14 @@ const defectTone = (qty: number) => {
                         key={r.hour}
                         className={cn(
                           "transition-colors duration-200",
-                          zebra ? "bg-[#eef4fb] dark:bg-white/[0.02]" : "bg-[#f8fbff]/96 dark:bg-transparent",
-                          "hover:bg-[#e3edf9] dark:hover:bg-white/[0.04]"
+                          "h-[56px]",
+                          zebra ? "bg-slate-50 dark:bg-white/[0.02]" : "bg-white dark:bg-transparent",
+                          "hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                         )}
                       >
                         <td
                           className={cn(
-                            "border-b border-slate-200/90 bg-[linear-gradient(180deg,#d7e2ef_0%,#c8d5e4_100%)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(39,61,92,0.96),rgba(31,51,78,0.96))]",
+                            "border-b border-slate-200/90 border-l-4 border-l-blue-400 bg-[linear-gradient(180deg,#d7e2ef_0%,#c8d5e4_100%)] dark:border-white/10 dark:border-l-blue-500/40 dark:bg-[linear-gradient(180deg,rgba(39,61,92,0.96),rgba(31,51,78,0.96))]",
                             rowPad
                           )}
                         >
@@ -214,25 +215,18 @@ const defectTone = (qty: number) => {
                             rowPad
                           )}
                         >
-                          <div className="flex items-center justify-end gap-3.5">
-                            <div className="h-4 w-28 overflow-hidden rounded-full border border-slate-300 bg-white/90 shadow-[inset_0_1px_1px_rgba(255,255,255,0.72)] dark:border-white/12 dark:bg-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                              <div
-                                className={cn("h-full rounded-full shadow-[0_0_14px_rgba(255,255,255,0.08)]", dhuStyle.fill)}
-                                style={{ width: `${Math.max(4, Math.min(100, dhu * 12))}%` }}
-                              />
-                            </div>
-
-                           <span
-                          className={cn(
-                            "inline-flex min-w-[92px] justify-center rounded-full border px-3.5 py-1.5 text-[21px] font-black tabular-nums tracking-[-0.02em]",
-                            "text-slate-950 dark:!text-white",
-                            "[text-shadow:0_1px_0_rgba(255,255,255,0.55)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
-                            "shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_4px_12px_rgba(0,0,0,0.22)]",
-                            dhuStyle.chip
-                          )}
-                        >
-                          {dhu.toFixed(1)}%
-                        </span>
+                          <div className="flex items-center justify-end">
+                            <span
+                              className={cn(
+                                "inline-flex min-w-[110px] justify-center rounded-full border px-4 py-2 text-[32px] font-black tabular-nums tracking-[-0.02em]",
+                                "text-slate-950 dark:!text-white",
+                                "[text-shadow:0_1px_0_rgba(255,255,255,0.55)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
+                                "shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_4px_12px_rgba(0,0,0,0.22)]",
+                                dhuStyle.chip
+                              )}
+                            >
+                              {dhu.toFixed(1)}%
+                            </span>
                           </div>
                         </td>
 
@@ -243,16 +237,16 @@ const defectTone = (qty: number) => {
                           )}
                         >
                           <span
-                          className={cn(
-                            "inline-flex min-w-[68px] justify-center rounded-full border px-3.5 py-1.5 text-[21px] font-black tabular-nums tracking-[-0.02em]",
-                            "text-slate-950 dark:!text-white",
-                            "[text-shadow:0_1px_0_rgba(255,255,255,0.55)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
-                            "shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_4px_12px_rgba(0,0,0,0.22)]",
-                            defectTone(defects)
-                          )}
-                        >
-                          {defects}
-                        </span>
+                            className={cn(
+                              "inline-flex min-w-[90px] justify-center rounded-full border px-4 py-2 text-[32px] font-black tabular-nums tracking-[-0.02em]",
+                              "text-slate-950 dark:!text-white",
+                              "[text-shadow:0_1px_0_rgba(255,255,255,0.55)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
+                              "shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_4px_12px_rgba(0,0,0,0.22)]",
+                              defectTone(defects)
+                            )}
+                          >
+                            {defects}
+                          </span>
                         </td>
 
                         <td
@@ -267,7 +261,7 @@ const defectTone = (qty: number) => {
                                 <span
                                   key={`${code}-${i2}`}
                                   className={cn(
-                                      "inline-flex items-center rounded-full border px-4 py-2 text-[20px] font-black tracking-[0.005em]",
+                                      "inline-flex items-center rounded-full border px-5 py-2.5 text-[22px] font-black tracking-[0.005em]",
                                       "text-slate-950 dark:!text-white",
                                       "[text-shadow:0_1px_0_rgba(255,255,255,0.42)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
                                       "shadow-[inset_0_1px_0_rgba(255,255,255,0.30)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
@@ -281,7 +275,7 @@ const defectTone = (qty: number) => {
                               ))}
                             </div>
                           ) : (
-                            <span className="text-[20px] font-black text-slate-800 dark:text-white">—</span>
+                            <span className="text-[26px] font-black text-slate-800 dark:text-white">—</span>
                           )}
                         </td>
 
@@ -300,7 +294,7 @@ const defectTone = (qty: number) => {
                               <span className="tracking-[-0.01em] text-inherit drop-shadow-[0_1px_0_rgba(255,255,255,0.45)] dark:[text-shadow:0_1px_10px_rgba(0,0,0,0.7)]">Details</span>
                             </button>
                           ) : (
-                            <span className="text-[20px] font-black text-slate-800 dark:text-white">—</span>
+                            <span className="text-[26px] font-black text-slate-800 dark:text-white">—</span>
                           )}
                         </td>
                       </tr>

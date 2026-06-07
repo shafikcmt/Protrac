@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Pause, Play, RefreshCw } from "lucide-react";
+import { Pause, Play, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { useSewingDashboardV2 } from "@/hooks/api";
 import { useKioskFilters } from "../../kiosk-context";
 
@@ -186,6 +186,20 @@ export default function Page() {
       return () => clearTimeout(t);
     }
   }, [isRefetching, showRefreshIndicator]);
+
+  const [clock, setClock] = React.useState("");
+  React.useEffect(() => {
+    const fmt = () =>
+      new Date().toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+    setClock(fmt());
+    const id = setInterval(() => setClock(fmt()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const linesAll: any[] = React.useMemo(() => (Array.isArray(sewingLines) ? sewingLines : []), [sewingLines]);
 
@@ -645,6 +659,18 @@ export default function Page() {
         )}
         style={{ height: height ? `${height}px` : "calc(100vh - 160px)", ...uiVars }}
       >
+        {/* Progress bar */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-white/10 dark:bg-white/10 bg-slate-200 z-20 rounded-t-xl overflow-hidden">
+          <div
+            key={`progress-${safeIndex}-${autoPlay ? "play" : "pause"}`}
+            className={cn(
+              "h-full dark:bg-white bg-blue-500",
+              autoPlay ? "animate-[progressFill_30s_linear_forwards]" : ""
+            )}
+            style={autoPlay ? undefined : { width: "0%" }}
+          />
+        </div>
+
         <div className="pointer-events-none absolute inset-0 opacity-80 hidden dark:block">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(59,130,246,0.18),transparent_40%),radial-gradient(circle_at_70%_20%,rgba(34,197,94,0.14),transparent_45%),radial-gradient(circle_at_40%_80%,rgba(244,63,94,0.14),transparent_45%)]" />
           <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.05),transparent_35%,rgba(255,255,255,0.03))]" />
@@ -660,7 +686,7 @@ export default function Page() {
                 <div className="font-extrabold text-white truncate text-[var(--fs-title)] drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">
                   {current?.title ?? ""}
                 </div>
-                <div className="text-white/65 truncate text-[var(--fs-sub)]">
+                <div className="text-white/65 truncate text-[var(--fs-sub)] bg-white/10 px-2.5 py-1 rounded-full w-fit">
                   {activeLines.length ? `${activeLines.length} line(s)` : isLoading ? "Loading..." : "No data"}
                 </div>
               </div>
@@ -687,6 +713,12 @@ export default function Page() {
               </div>
 
               <div className="flex items-center gap-2">
+                {clock && (
+                  <span className="hidden md:block font-mono text-xl font-semibold tabular-nums text-slate-300 dark:text-slate-300 mr-1">
+                    {clock}
+                  </span>
+                )}
+
                 <div className="hidden md:flex items-center gap-2">
                   {slides.map((_, i) => (
                     <button
@@ -718,19 +750,33 @@ export default function Page() {
                 {current?.node}
               </div>
             </div>
+
+            <button
+              onClick={() => setIndex((i) => (i - 1 + slides.length) % slides.length)}
+              className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-slate-800/70 hover:bg-slate-700 text-white shadow-md transition-colors"
+              aria-label="Previous slide"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+
+            <button
+              onClick={() => setIndex((i) => (i + 1) % slides.length)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-slate-800/70 hover:bg-slate-700 text-white shadow-md transition-colors"
+              aria-label="Next slide"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
           </div>
         </div>
 
         <style jsx global>{`
           @keyframes slideIn {
-            0% {
-              opacity: 0;
-              transform: translateY(10px) scale(0.995);
-            }
-            100% {
-              opacity: 1;
-              transform: translateY(0px) scale(1);
-            }
+            0% { opacity: 0; transform: translateY(10px) scale(0.995); }
+            100% { opacity: 1; transform: translateY(0px) scale(1); }
+          }
+          @keyframes progressFill {
+            from { width: 0%; }
+            to { width: 100%; }
           }
         `}</style>
 
