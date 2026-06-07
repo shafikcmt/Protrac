@@ -30,6 +30,7 @@ import { useLineTargets } from "./use-line-targets";
 import { createLineTargetsTableConfig } from "./line-targets-table-config";
 import { LineTargetForm } from "./line-target-form";
 import { LineTargetDeleteDialog } from "./line-target-delete-dialog";
+import { BulkLineTargetForm } from "./bulk-line-target-form";
 import { schemas } from "@/types/api/client";
 
 type LineTarget = z.infer<typeof schemas.LineTarget>;
@@ -53,10 +54,12 @@ export default function LineTargetsPage() {
     isCreating,
     isUpdating,
     isDeleting,
+    isBulkUpserting,
     createLineTarget,
     updateLineTarget,
     deleteLineTarget,
     deleteLineTargets,
+    bulkUpsertLineTargets,
   } = useLineTargets({
     date: selectedDate ? format(selectedDate, "yyyy-MM-dd") : undefined,
     line: selectedLine,
@@ -255,6 +258,14 @@ export default function LineTargetsPage() {
               </Button>
             )}
           </div>
+
+          {/* Bulk Line Target Form */}
+          <BulkLineTargetForm
+            sewingLines={productionLines}
+            existingTargets={lineTargets}
+            onSave={bulkUpsertLineTargets}
+            isSaving={isBulkUpserting}
+          />
 
           {/* Data Table */}
           <DataTable

@@ -46,7 +46,7 @@ from tracking.api import (
     finishing_qc_info,
 )
 from tracking.api.fifo_reporting import fifo_violations_report
-from tracking.api.line_target import LineTargetListCreateView, LineTargetDetailView
+from tracking.api.line_target import LineTargetListCreateView, LineTargetDetailView, LineTargetBulkUpsertView
 from tracking.api.sewing_dashboard_v2_quality_export import SewingLineDashboardV2QualityExportView
 
 app_name = "tracking"
@@ -97,6 +97,11 @@ urlpatterns = [
         "line-targets/<int:pk>/",
         LineTargetDetailView.as_view(),
         name="linetarget-detail",
+    ),
+    path(
+        "line-targets/bulk/",
+        LineTargetBulkUpsertView.as_view(),
+        name="linetarget-bulk-upsert",
     ),
     # Style endpoints
     path("styles/", StyleListCreateView.as_view(), name="style-list-create"),

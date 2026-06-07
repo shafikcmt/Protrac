@@ -10,6 +10,14 @@ import { extractErrorMessage } from "@/lib/error-utils";
 type LineTarget = z.infer<typeof schemas.LineTarget>;
 type LineTargetRequest = z.infer<typeof schemas.LineTargetRequest>;
 
+export interface BulkTargetEntry {
+  line_id: number;
+  line_name: string;
+  target_quantity: number | null;
+  work_hours: number | null;
+  worker_count: number | null;
+}
+
 interface UseLineTargetsOptions {
   date?: string;
   line?: number;
@@ -109,6 +117,26 @@ export function useLineTargets(options: UseLineTargetsOptions = {}) {
     },
   });
 
+  // Bulk upsert mutation
+  const bulkUpsertMutation = useMutation({
+    mutationFn: async (payload: { date: string; targets: BulkTargetEntry[] }) => {
+      return api.post("/api/tracking/line-targets/bulk/", payload);
+    },
+    onSuccess: () => {
+      toast.success("All line targets saved successfully");
+      const queryKey = apiHooks.getKeyByPath("get", "/api/tracking/line-targets/");
+      queryClient.invalidateQueries({ queryKey });
+      onSuccess?.();
+    },
+    onError: (error: any) => {
+      toast.error(extractErrorMessage(error));
+    },
+  });
+
+  const bulkUpsertLineTargets = (payload: { date: string; targets: BulkTargetEntry[] }) => {
+    bulkUpsertMutation.mutate(payload);
+  };
+
   const createLineTarget = (data: LineTargetRequest) => {
     createLineTargetMutation.mutate(data);
   };
@@ -139,17 +167,21 @@ export function useLineTargets(options: UseLineTargetsOptions = {}) {
 
   return {
     lineTargets: lineTargetsData?.results || [],
-    productionLines: productionLinesData?.results || [],
+    productionLines: (productionLinesData?.results || []).filter(
+      (l: any) => l.line_type === "sewing"
+    ),
     totalCount: lineTargetsData?.count || 0,
     isLoading,
     error,
     isCreating: createLineTargetMutation.isPending,
     isUpdating: updateLineTargetMutation.isPending,
     isDeleting: deleteLineTargetMutation.isPending,
+    isBulkUpserting: bulkUpsertMutation.isPending,
     createLineTarget,
     updateLineTarget,
     deleteLineTarget,
     deleteLineTargets,
+    bulkUpsertLineTargets,
     refetch,
   };
 }
