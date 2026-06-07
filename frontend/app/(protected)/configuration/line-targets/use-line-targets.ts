@@ -6,6 +6,7 @@ import { apiHooks, api } from "@/lib/api";
 import { schemas } from "@/types/api/client";
 import { toast } from "sonner";
 import { extractErrorMessage } from "@/lib/error-utils";
+import { useAuthStore } from "@/store/auth";
 
 type LineTarget = z.infer<typeof schemas.LineTarget>;
 type LineTargetRequest = z.infer<typeof schemas.LineTargetRequest>;
@@ -117,10 +118,26 @@ export function useLineTargets(options: UseLineTargetsOptions = {}) {
     },
   });
 
-  // Bulk upsert mutation
+  // Bulk upsert mutation — uses raw fetch because the endpoint is not in the Zodios schema
   const bulkUpsertMutation = useMutation({
     mutationFn: async (payload: { date: string; targets: BulkTargetEntry[] }) => {
-      return api.post("/api/tracking/line-targets/bulk/", payload);
+      const { tokens } = useAuthStore.getState();
+      const baseUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, "") ??
+        "http://127.0.0.1:8000";
+      const res = await fetch(`${baseUrl}/api/tracking/line-targets/bulk/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(tokens?.access ? { Authorization: `Bearer ${tokens.access}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || err?.detail || "Failed to save line targets");
+      }
+      return res.json();
     },
     onSuccess: () => {
       toast.success("All line targets saved successfully");
@@ -129,7 +146,7 @@ export function useLineTargets(options: UseLineTargetsOptions = {}) {
       onSuccess?.();
     },
     onError: (error: any) => {
-      toast.error(extractErrorMessage(error));
+      toast.error(error?.message || "Failed to save line targets");
     },
   });
 

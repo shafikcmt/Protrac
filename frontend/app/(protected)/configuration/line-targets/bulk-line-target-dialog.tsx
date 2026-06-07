@@ -111,57 +111,59 @@ export function BulkLineTargetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
+      <DialogContent className="!w-[580px] !max-w-[96vw] max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
         {/* Header */}
-        <DialogHeader className="px-6 pt-6 pb-4">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                <Target className="h-5 w-5 text-primary" />
+        <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+                  <Target className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg">Set Line Targets</DialogTitle>
+                  <DialogDescription className="text-sm mt-0.5">
+                    Set production targets for all sewing lines in one go.
+                  </DialogDescription>
+                </div>
               </div>
-              <div>
-                <DialogTitle className="text-lg">Set Line Targets</DialogTitle>
-                <DialogDescription className="text-sm mt-0.5">
-                  Set production targets for all sewing lines in one go.
-                </DialogDescription>
-              </div>
+
+              {/* Date picker */}
+              <Popover open={calOpen} onOpenChange={setCalOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2 shrink-0 text-xs">
+                    <CalendarIcon className="h-3.5 w-3.5" />
+                    {format(selectedDate, "MMM dd, yyyy")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(d) => {
+                      if (d) {
+                        setSelectedDate(d);
+                        setCalOpen(false);
+                      }
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
-            {/* Date picker */}
-            <Popover open={calOpen} onOpenChange={setCalOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 shrink-0 text-xs">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(selectedDate, "MMM dd, yyyy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="end">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(d) => {
-                    if (d) {
-                      setSelectedDate(d);
-                      setCalOpen(false);
-                    }
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            {/* Summary badges */}
+            {filledCount > 0 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">
+                  {filledCount} / {rows.length} lines set
+                </Badge>
+                <Badge variant="outline" className="tabular-nums">
+                  {totalTarget.toLocaleString()} total units
+                </Badge>
+              </div>
+            )}
           </div>
-
-          {/* Summary bar */}
-          {filledCount > 0 && (
-            <div className="flex items-center gap-2 mt-3">
-              <Badge variant="secondary" className="gap-1">
-                {filledCount} / {rows.length} lines set
-              </Badge>
-              <Badge variant="outline" className="gap-1 tabular-nums">
-                {totalTarget.toLocaleString()} total units
-              </Badge>
-            </div>
-          )}
         </DialogHeader>
 
         <Separator />
@@ -185,35 +187,26 @@ export function BulkLineTargetDialog({
         <Separator />
 
         {/* Table */}
-        <ScrollArea className="flex-1 overflow-auto">
-          <table className="w-full text-sm table-fixed">
-            <colgroup>
-              <col className="w-[120px]" />
-              <col className="w-[110px]" />
-              <col className="w-[100px]" />
-              <col className="w-[90px]" />
-              <col className="w-[80px]" />
-              <col className="w-[40px]" />
-            </colgroup>
+        <ScrollArea className="flex-1 min-h-0 overflow-auto max-h-[380px]">
+          <table className="w-full text-sm table-fixed border-collapse">
             <thead className="sticky top-0 z-10 bg-background border-b">
               <tr>
-                <th className="text-left px-6 py-2.5 font-medium text-muted-foreground">
+                <th className="text-left px-4 py-2.5 font-medium text-muted-foreground w-28 whitespace-nowrap">
                   Line
                 </th>
-                <th className="text-right px-3 py-2.5 font-medium text-muted-foreground">
-                  Target Qty
-                  <span className="text-xs font-normal ml-1 text-destructive">*</span>
+                <th className="text-right px-3 py-2.5 font-medium text-muted-foreground w-28 whitespace-nowrap">
+                  Target Qty <span className="text-destructive">*</span>
                 </th>
-                <th className="text-right px-3 py-2.5 font-medium text-muted-foreground">
+                <th className="text-right px-3 py-2.5 font-medium text-muted-foreground w-24 whitespace-nowrap">
                   Work Hours
                 </th>
-                <th className="text-right px-3 py-2.5 font-medium text-muted-foreground">
+                <th className="text-right px-3 py-2.5 font-medium text-muted-foreground w-20 whitespace-nowrap">
                   Workers
                 </th>
-                <th className="text-right px-3 py-2.5 font-medium text-muted-foreground">
+                <th className="text-right px-3 py-2.5 font-medium text-muted-foreground w-20 whitespace-nowrap">
                   Target/hr
                 </th>
-                <th className="px-2" />
+                <th className="w-9 px-1" />
               </tr>
             </thead>
             <tbody>
@@ -233,16 +226,16 @@ export function BulkLineTargetDialog({
                         : "hover:bg-muted/20"
                     )}
                   >
-                    <td className="px-6 py-2">
+                    <td className="px-4 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{row.line_name}</span>
+                        <span className="font-medium text-sm">{row.line_name}</span>
                         {isSet && (
-                          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                         )}
                       </div>
                     </td>
 
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2">
                       <Input
                         type="number"
                         min={0}
@@ -252,11 +245,11 @@ export function BulkLineTargetDialog({
                           updateRow(index, "target_qty_str", e.target.value)
                         }
                         onFocus={(e) => e.target.select()}
-                        className="h-9 text-right tabular-nums font-medium text-sm px-3 border-input focus-visible:ring-2 focus-visible:ring-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-9 text-right tabular-nums font-medium text-sm px-2 border-input focus-visible:ring-2 focus-visible:ring-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </td>
 
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2">
                       <Input
                         type="number"
                         min={1}
@@ -268,11 +261,11 @@ export function BulkLineTargetDialog({
                           updateRow(index, "work_hours_str", e.target.value)
                         }
                         onFocus={(e) => e.target.select()}
-                        className="h-9 text-right tabular-nums text-sm px-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-9 text-right tabular-nums text-sm px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </td>
 
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-2">
                       <Input
                         type="number"
                         min={1}
@@ -282,7 +275,7 @@ export function BulkLineTargetDialog({
                           updateRow(index, "worker_count_str", e.target.value)
                         }
                         onFocus={(e) => e.target.select()}
-                        className="h-9 text-right tabular-nums text-sm px-3 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-9 text-right tabular-nums text-sm px-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </td>
 
