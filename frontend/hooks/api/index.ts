@@ -7,3 +7,9 @@ export { useOverviewStats } from "./use-overview-stats";
 export { useDailyProductionReport } from "./use-daily-production-report";
 export { useGarmentsHeatmap } from "./use-garments-heatmap";
 export { useTodayLineTargets } from "./use-today-line-targets";
+export {
+  useLineStyleCompletions,
+  markStyleComplete,
+  undoStyleComplete,
+  type LineStyleCompletionRecord,
+} from "./use-line-style-completion";

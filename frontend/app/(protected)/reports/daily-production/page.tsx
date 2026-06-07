@@ -1,12 +1,33 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, Download } from "lucide-react";
+import { RefreshCw, Download, ChevronDown, ChevronUp, Undo2 } from "lucide-react";
+import { toast } from "sonner";
 import { AppHeader, AppContent, type BreadcrumbItem } from "@/components/app/app-layout";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ProductionReportFilters } from "./production-report-filters";
 import { ProductionReportTable } from "./production-report-table";
-import { useDailyProductionReport } from "@/hooks/api";
+import { useDailyProductionReport, useLineStyleCompletions, undoStyleComplete, type LineStyleCompletionRecord } from "@/hooks/api";
 import { cn } from "@/lib/utils";
 
 interface FiltersState {
@@ -43,6 +64,9 @@ export default function DailyProductionPage() {
   });
 
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
+  const [showUndoPanel, setShowUndoPanel] = useState(false);
+  const [undoTarget, setUndoTarget] = useState<LineStyleCompletionRecord | null>(null);
+  const [isUndoing, setIsUndoing] = useState(false);
 
   const handleFiltersChange = (newFilters: FiltersState) => {
     setFilters((prev) => {
@@ -79,6 +103,25 @@ export default function DailyProductionPage() {
     style_id: filters.style_id,
     style_ids: filters.style_ids,
   });
+
+  const completionsQuery = useLineStyleCompletions();
+  const completions: LineStyleCompletionRecord[] = completionsQuery.data ?? [];
+
+  const handleUndo = async () => {
+    if (!undoTarget) return;
+    setIsUndoing(true);
+    try {
+      await undoStyleComplete(undoTarget.id);
+      toast.success("Style completion undone");
+      completionsQuery.refetch?.();
+      refetch();
+    } catch (e: any) {
+      toast.error(`Undo failed: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setIsUndoing(false);
+      setUndoTarget(null);
+    }
+  };
 
   useEffect(() => {
     if (isRefetching) setShowRefreshIndicator(true);
@@ -240,7 +283,73 @@ export default function DailyProductionPage() {
 
           <ProductionReportFilters filters={filters} onFiltersChange={handleFiltersChange} />
 
-          <ProductionReportTable reportData={reportData} isLoading={isLoading} />
+          <ProductionReportTable reportData={reportData} isLoading={isLoading} refetch={refetch} />
+
+          {completions.length > 0 && (
+            <Card>
+              <CardHeader
+                className="cursor-pointer select-none py-3"
+                onClick={() => setShowUndoPanel((p) => !p)}
+              >
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    Manually Completed Styles
+                    <Badge variant="secondary">{completions.length}</Badge>
+                  </CardTitle>
+                  {showUndoPanel ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+              </CardHeader>
+
+              {showUndoPanel && (
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Line</TableHead>
+                        <TableHead>Buyer</TableHead>
+                        <TableHead>Style</TableHead>
+                        <TableHead>Size</TableHead>
+                        <TableHead>Color</TableHead>
+                        <TableHead>Completed By</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {completions.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="text-sm">{c.production_line_name}</TableCell>
+                          <TableCell className="text-sm">{c.order_detail.buyer ?? "-"}</TableCell>
+                          <TableCell className="text-sm">{c.order_detail.style ?? "-"}</TableCell>
+                          <TableCell className="text-sm">{c.order_detail.size ?? "-"}</TableCell>
+                          <TableCell className="text-sm">{c.order_detail.color ?? "-"}</TableCell>
+                          <TableCell className="text-sm">{c.completed_by_name ?? "-"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(c.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => setUndoTarget(c)}
+                            >
+                              <Undo2 className="h-3 w-3" />
+                              Undo
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              )}
+            </Card>
+          )}
 
           {showRefreshIndicator && (
             <div className="fixed bottom-4 right-4 z-50">
@@ -249,6 +358,31 @@ export default function DailyProductionPage() {
           )}
         </div>
       </AppContent>
+
+      <AlertDialog
+        open={!!undoTarget}
+        onOpenChange={(open) => {
+          if (!open) setUndoTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Undo Style Completion?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will restore{" "}
+              <strong>{undoTarget?.order_detail.style}</strong> on{" "}
+              <strong>{undoTarget?.production_line_name}</strong> and show it
+              again in today&apos;s report.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUndoing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleUndo} disabled={isUndoing}>
+              {isUndoing ? "Undoing…" : "Undo"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

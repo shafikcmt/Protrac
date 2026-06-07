@@ -84,6 +84,8 @@ class PartProductionSerializer(serializers.Serializer):
 class OrderProductionReportSerializer(serializers.Serializer):
     """Serializer for a single order's production data in the daily report."""
 
+    order_id = serializers.IntegerField(required=False, allow_null=True, help_text="Order ID")
+    production_line_id = serializers.IntegerField(required=False, allow_null=True, help_text="Production line ID")
     line = serializers.CharField(help_text="Production line name")
     buyer = serializers.CharField(help_text="Buyer/client name")
     style = serializers.CharField(help_text="Style name")
@@ -137,6 +139,11 @@ class OrderProductionReportSerializer(serializers.Serializer):
     )
     inspection = DayAndCumulativeSerializer(help_text="Garments inspected (QC'd)")
     packed = DayAndCumulativeSerializer(help_text="Garments packed (finished QC pass)")
+    needs_manual_complete = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="True when a 'Mark as Complete' button should be shown for this row",
+    )
 
 
 class ProductionLineReportSerializer(serializers.Serializer):

@@ -1,5 +1,6 @@
 from common.models import BaseModel
 import logging
+from django.conf import settings
 from django.db import models, transaction
 from common.fields import OptimizedImageField
 from tracking.models.constants import (
@@ -558,3 +559,31 @@ class Scan(BaseModel):
 
         validate_scan_item_exclusivity(self)
         super().save(*args, **kwargs)
+
+
+class LineStyleCompletion(BaseModel):
+    """Manually marked completion of a style on a production line."""
+
+    production_line = models.ForeignKey(
+        ProductionLine,
+        on_delete=models.CASCADE,
+        related_name="style_completions",
+    )
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name="line_completions",
+    )
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ("production_line", "order")
+
+    def __str__(self):
+        return f"{self.production_line.name} - {self.order} - manually completed"

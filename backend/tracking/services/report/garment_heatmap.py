@@ -92,6 +92,10 @@ def get_garment_heatmap_data(
         orders_qs = orders_qs.filter(
             Q(delivery_date__isnull=True) | Q(delivery_date__gt=today)
         )
+        # Exclude orders manually marked complete on any line
+        from tracking.models import LineStyleCompletion
+        completed_order_ids = LineStyleCompletion.objects.values_list("order_id", flat=True)
+        orders_qs = orders_qs.exclude(id__in=completed_order_ids)
 
     # Build result
     orders_data = []

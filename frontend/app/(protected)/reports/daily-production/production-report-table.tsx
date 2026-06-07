@@ -1,6 +1,8 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
+import { MoreHorizontal, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -11,7 +13,14 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -19,10 +28,28 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { markStyleComplete } from "@/hooks/api/use-line-style-completion";
 
 interface ProductionReportTableProps {
   reportData: any;
   isLoading: boolean;
+  refetch?: () => void;
+}
+
+interface PendingCompletion {
+  lineName: string;
+  styleName: string;
+  items: Array<{ order_id: number; production_line_id: number; size: string; color: string }>;
 }
 
 type Metric = { day: number; cumulative: number };
@@ -30,7 +57,29 @@ type Metric = { day: number; cumulative: number };
 export function ProductionReportTable({
   reportData,
   isLoading,
+  refetch,
 }: ProductionReportTableProps) {
+  const [pendingCompletion, setPendingCompletion] = useState<PendingCompletion | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const handleMarkComplete = async () => {
+    if (!pendingCompletion) return;
+    setIsCompleting(true);
+    try {
+      for (const item of pendingCompletion.items) {
+        await markStyleComplete(item.production_line_id, item.order_id);
+      }
+      toast.success(
+        `${pendingCompletion.styleName} on ${pendingCompletion.lineName} marked as complete`
+      );
+      refetch?.();
+    } catch (e: any) {
+      toast.error(`Failed to mark complete: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setIsCompleting(false);
+      setPendingCompletion(null);
+    }
+  };
   if (isLoading) {
     return (
       <Card>
@@ -92,11 +141,11 @@ export function ProductionReportTable({
           sleeve: { day: 0, cumulative: 0 },
           hood: { day: 0, cumulative: 0 },
           collar: { day: 0, cumulative: 0 },
-          lining: { day: 0, cumulative: 0 },
           assembly_input: { day: 0, cumulative: 0 },
           output: { day: 0, cumulative: 0 },
           inspection: { day: 0, cumulative: 0 },
           packed: { day: 0, cumulative: 0 },
+          needs_manual_complete: false,
           __dhuDayNum: 0,
           __dhuDayDen: 0,
           __dhuAvgNum: 0,
@@ -111,6 +160,7 @@ export function ProductionReportTable({
       acc.__items.push(order);
       acc.order_quantity += Number(order.order_quantity || 0);
       acc.input += Number(order.input || 0);
+      if (order.needs_manual_complete) acc.needs_manual_complete = true;
 
       const addMetric = (keyName: string) => {
         ensureMetric(acc, keyName);
@@ -124,7 +174,6 @@ export function ProductionReportTable({
       addMetric("sleeve");
       addMetric("hood");
       addMetric("collar");
-      addMetric("lining");
       addMetric("assembly_input");
       addMetric("output");
       addMetric("inspection");
@@ -156,6 +205,7 @@ export function ProductionReportTable({
   const getColorValue = (item: any) => item?.color || "-";
 
   return (
+    <>
     <Card>
       <CardHeader>
         <div className="flex justify-between items-start">
@@ -199,9 +249,6 @@ export function ProductionReportTable({
                   Hood/Collar
                 </TableHead>
                 <TableHead className="text-center" colSpan={2}>
-                  Lining
-                </TableHead>
-                <TableHead className="text-center" colSpan={2}>
                   Assembly Input
                 </TableHead>
                 <TableHead className="text-center" colSpan={2}>
@@ -228,9 +275,6 @@ export function ProductionReportTable({
                 <TableHead />
                 <TableHead />
                 <TableHead />
-
-                <TableHead className="text-xs text-right">Day</TableHead>
-                <TableHead className="text-xs text-right">Cumm</TableHead>
 
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Cumm</TableHead>
@@ -427,13 +471,6 @@ export function ProductionReportTable({
                           </TableCell>
 
                           <TableCell className="text-right text-xs">
-                            {formatNumber(order.lining?.day || 0)}
-                          </TableCell>
-                          <TableCell className="text-right text-xs">
-                            {formatNumber(order.lining?.cumulative || 0)}
-                          </TableCell>
-
-                          <TableCell className="text-right text-xs">
                             {formatNumber(order.assembly_input?.day || 0)}
                           </TableCell>
                           <TableCell className="text-right text-xs">
@@ -468,7 +505,38 @@ export function ProductionReportTable({
                             {formatNumber(order.packed?.cumulative || 0)}
                           </TableCell>
 
-                          <TableCell className="text-xs" />
+                          <TableCell className="text-xs">
+                            {order.needs_manual_complete && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      setPendingCompletion({
+                                        lineName: order.line,
+                                        styleName: order.style,
+                                        items: (order.__items || [])
+                                          .filter((it: any) => it.needs_manual_complete)
+                                          .map((it: any) => ({
+                                            order_id: it.order_id,
+                                            production_line_id: it.production_line_id,
+                                            size: it.size ?? "",
+                                            color: it.color ?? "",
+                                          })),
+                                      })
+                                    }
+                                  >
+                                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                                    Mark Complete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </TableCell>
                         </TableRow>
                       </Fragment>
                     );
@@ -493,7 +561,7 @@ export function ProductionReportTable({
                       )}
                     </TableCell>
 
-                    <TableCell colSpan={12} />
+                    <TableCell colSpan={10} />
 
                     <TableCell className="text-right text-xs">
                       {formatNumber(
@@ -576,5 +644,44 @@ export function ProductionReportTable({
         )}
       </CardContent>
     </Card>
+
+    <AlertDialog
+      open={!!pendingCompletion}
+      onOpenChange={(open) => {
+        if (!open) setPendingCompletion(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Mark Style as Complete?</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div>
+              <p>
+                This will hide{" "}
+                <strong>{pendingCompletion?.styleName}</strong> on{" "}
+                <strong>{pendingCompletion?.lineName}</strong> from
+                today&apos;s report.
+              </p>
+              {(pendingCompletion?.items?.length ?? 0) > 1 && (
+                <ul className="mt-2 list-disc pl-4 text-sm space-y-1">
+                  {pendingCompletion?.items.map((it, i) => (
+                    <li key={i}>
+                      {it.size} / {it.color}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isCompleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleMarkComplete} disabled={isCompleting}>
+            {isCompleting ? "Saving…" : "Mark Complete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

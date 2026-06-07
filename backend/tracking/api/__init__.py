@@ -49,6 +49,8 @@ from .report import (  # noqa
     SewingDashboardView,
     FinishingDashboardView,
     DailyProductionReportView,
+    LineStyleCompletionView,
+    LineStyleCompletionDetailView,
 )
 
 from .report.garment_heatmap import (  # noqa

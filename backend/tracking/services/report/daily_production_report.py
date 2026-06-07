@@ -4,10 +4,10 @@ from typing import List, Dict, Any, Optional
 from datetime import date
 
 import pendulum
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Max
 
 from common.utils.time import today, day_range
-from tracking.models import ProductionLine, Order, QualityCheck
+from tracking.models import ProductionLine, Order, Bundle, QualityCheck, LineStyleCompletion
 from tracking.models.constants import LineType, GarmentStatus
 from tracking.models.constants import QualityCheckStatus
 from tracking.models import Scan as TrackingScan
@@ -140,6 +140,16 @@ def get_daily_production_report_data(
             | Q(part_inventories__production_line=line)
         ).distinct()
 
+        # Determine the active order: whichever order has the most recently issued bundle
+        active_order_id = (
+            line_orders
+            .filter(bundles__assigned_sewing_line=line, bundles__issued_at__isnull=False)
+            .annotate(latest_issued=Max("bundles__issued_at"))
+            .order_by("-latest_issued")
+            .values_list("id", flat=True)
+            .first()
+        )
+
         line_report = {
             "production_line_id": line.id,
             "production_line_name": line.name,
@@ -152,6 +162,7 @@ def get_daily_production_report_data(
                 production_line=line,
                 report_date=report_date,
                 active_only=active_only,
+                active_order_id=active_order_id,
             )
             if order_data:
                 line_report["orders"].append(order_data)
@@ -167,6 +178,7 @@ def _calculate_order_metrics(
     production_line: ProductionLine,
     report_date: date,
     active_only: bool = True,
+    active_order_id: Optional[int] = None,
 ) -> Optional[Dict[str, Any]]:
     """Calculate all metrics for a single order on a production line for the report date."""
 
@@ -174,6 +186,13 @@ def _calculate_order_metrics(
     if active_only:
         dd = getattr(order, "delivery_date", None)
         if dd is None or dd <= report_date:
+            return None
+
+    # Check A: Skip if manually marked complete on this line
+    if active_only:
+        if LineStyleCompletion.objects.filter(
+            production_line=production_line, order=order
+        ).exists():
             return None
 
     day_start, day_end = day_range(report_date)
@@ -190,6 +209,8 @@ def _calculate_order_metrics(
         return None
 
     base_data = {
+        "order_id": order.id,
+        "production_line_id": production_line.id,
         "line": production_line.name,
         "buyer": (
             order.style.buyer.name
@@ -202,7 +223,13 @@ def _calculate_order_metrics(
         "order_quantity": order.quantity,
         "delivery_date": getattr(order, "delivery_date", None),
         "working_hours": 8.0,
-        "working_days": 1,
+        "working_days": max(
+            order.bundles.filter(
+                assigned_sewing_line=production_line,
+                issued_at__isnull=False,
+            ).dates("issued_at", "day").count(),
+            1,
+        ),
     }
 
     input_data = _get_input_metrics(
@@ -254,6 +281,13 @@ def _calculate_order_metrics(
         active_only=active_only,
     )
 
+    # Check B: Auto-hide if all bundles issued have been output (fully processed)
+    if active_only:
+        cumulative_input = int(input_data.get("cumulative", 0) or 0)
+        cumulative_output = int((output_data.get("output") or {}).get("cumulative", 0) or 0)
+        if cumulative_input > 0 and cumulative_input == cumulative_output:
+            return None
+
     result = {
         **base_data,
         "input": input_total,
@@ -269,6 +303,21 @@ def _calculate_order_metrics(
     if packed_cumm >= (order.quantity or 0):
         return None
 
+    # Check C: "Mark as Complete" button — only for NON-active orders when a newer one exists
+    cumulative_input = int(input_data.get("cumulative", 0) or 0)
+    cumulative_output = int((output_data.get("output") or {}).get("cumulative", 0) or 0)
+    is_active_order = order.id == active_order_id
+
+    needs_manual_complete = bool(
+        active_only
+        and not is_active_order
+        and active_order_id is not None
+        and cumulative_input != cumulative_output
+        and getattr(order, "delivery_date", None) is not None
+        and order.delivery_date > report_date
+    )
+
+    result["needs_manual_complete"] = needs_manual_complete
     return result
 
 

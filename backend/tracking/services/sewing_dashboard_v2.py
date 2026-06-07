@@ -318,6 +318,13 @@ def _get_todays_input_bundles_queryset(
 
     qs = _apply_active_only_by_delivery(qs, "order__delivery_date", active_only)
 
+    if active_only:
+        from tracking.models import LineStyleCompletion
+        completed_order_ids = LineStyleCompletion.objects.filter(
+            production_line=production_line
+        ).values_list("order_id", flat=True)
+        qs = qs.exclude(order_id__in=completed_order_ids)
+
     if order_id:
         qs = qs.filter(order_id=order_id)
     if style_id:
@@ -355,6 +362,13 @@ def _get_pending_input_bundles_upto_queryset(
     )
 
     qs = _apply_active_only_by_delivery(qs, "order__delivery_date", active_only)
+
+    if active_only:
+        from tracking.models import LineStyleCompletion
+        completed_order_ids = LineStyleCompletion.objects.filter(
+            production_line=production_line
+        ).values_list("order_id", flat=True)
+        qs = qs.exclude(order_id__in=completed_order_ids)
 
     if order_id:
         qs = qs.filter(order_id=order_id)

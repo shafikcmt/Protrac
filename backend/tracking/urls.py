@@ -1,5 +1,7 @@
 from django.urls import path
 from tracking.api import (
+    LineStyleCompletionView,
+    LineStyleCompletionDetailView,
     BuyerListCreateView,
     BuyerDetailView,
     SeasonListCreateView,
@@ -177,6 +179,16 @@ urlpatterns = [
         "reports/fifo-violations/",
         fifo_violations_report,
         name="fifo-violations-report",
+    ),
+    path(
+        "reports/line-style-completion/",
+        LineStyleCompletionView.as_view(),
+        name="line-style-completion-list-create",
+    ),
+    path(
+        "reports/line-style-completion/<int:pk>/",
+        LineStyleCompletionDetailView.as_view(),
+        name="line-style-completion-detail",
     ),
     path(
     "reports/sewing-line-dashboard-v2/quality-export/",
