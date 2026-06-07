@@ -44,8 +44,7 @@ export default function FinishingKioskPage() {
   }
 
   return (
-    // 88px accounts for kiosk header (~64px) + main top padding (24px)
-    <div className="h-[calc(100vh-88px)] flex flex-col gap-4 overflow-hidden">
+    <div className="h-[calc(100vh-64px)] flex flex-col gap-4 overflow-hidden -m-6 p-6 bg-slate-950">
       {/* Summary stats — fixed height */}
       <StatsCards chartData={chartData} summaryStats={summaryStats} />
 

@@ -29,27 +29,22 @@ interface StatsCardsProps {
 interface StatCardProps {
   label: string;
   value: string;
-  colorClass: string;
-  borderClass: string;
+  topBorderClass: string;
+  labelColorClass: string;
 }
 
-function StatCard({ label, value, colorClass, borderClass }: StatCardProps) {
+function StatCard({ label, value, topBorderClass, labelColorClass }: StatCardProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border-t-4 px-6 py-4 bg-card shadow-sm flex flex-col gap-1",
-        borderClass
+        "rounded-xl border border-slate-700 bg-slate-800 px-6 py-5 flex flex-col gap-2 border-t-4",
+        topBorderClass
       )}
     >
-      <span
-        className={cn(
-          "text-xs font-bold uppercase tracking-widest",
-          colorClass
-        )}
-      >
+      <span className={cn("text-xs font-bold uppercase tracking-widest", labelColorClass)}>
         {label}
       </span>
-      <span className="text-5xl font-black tabular-nums leading-none">
+      <span className="text-5xl font-black tabular-nums leading-none text-white">
         {value}
       </span>
     </div>
@@ -65,8 +60,7 @@ export function StatsCards({ chartData, summaryStats }: StatsCardsProps) {
     (sum, item) => sum + item.qc_pass,
     0
   );
-  const qcPassRate =
-    totalQcChecks > 0 ? (totalQcPass / totalQcChecks) * 100 : null;
+  const qcPassRate = totalQcChecks > 0 ? (totalQcPass / totalQcChecks) * 100 : null;
 
   const completionPct =
     summaryStats.avgCompletionRate >= 0
@@ -78,32 +72,32 @@ export function StatsCards({ chartData, summaryStats }: StatsCardsProps) {
       <StatCard
         label="Total Input"
         value={summaryStats.totalInput.toLocaleString()}
-        colorClass="text-blue-600 dark:text-blue-400"
-        borderClass="border-blue-500"
+        topBorderClass="border-t-blue-500"
+        labelColorClass="text-blue-400"
       />
       <StatCard
         label="Total Output"
         value={summaryStats.totalOutput.toLocaleString()}
-        colorClass="text-green-600 dark:text-green-400"
-        borderClass="border-green-500"
+        topBorderClass="border-t-green-500"
+        labelColorClass="text-green-400"
       />
       <StatCard
         label="Total WIP"
         value={summaryStats.totalWip.toLocaleString()}
-        colorClass="text-amber-600 dark:text-amber-400"
-        borderClass="border-amber-500"
+        topBorderClass="border-t-amber-500"
+        labelColorClass="text-amber-400"
       />
       <StatCard
         label="Completion"
         value={completionPct}
-        colorClass="text-purple-600 dark:text-purple-400"
-        borderClass="border-purple-500"
+        topBorderClass="border-t-purple-500"
+        labelColorClass="text-purple-400"
       />
       <StatCard
         label="QC Pass Rate"
         value={qcPassRate !== null ? `${qcPassRate.toFixed(1)}%` : "N/A"}
-        colorClass="text-teal-600 dark:text-teal-400"
-        borderClass="border-teal-500"
+        topBorderClass="border-t-teal-500"
+        labelColorClass="text-teal-400"
       />
     </div>
   );
