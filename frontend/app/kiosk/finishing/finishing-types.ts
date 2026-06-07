@@ -27,6 +27,14 @@ export type StatusKind =
   | "in-progress"
   | "done";
 
+export const ALL_STATUSES: StatusKind[] = [
+  "expired",
+  "due-today",
+  "expiring-soon",
+  "in-progress",
+  "done",
+];
+
 export function getStatus(order: OrderGroup): StatusKind {
   if (order.completion_rate >= 1) return "done";
   if (!order.delivery_date) return "in-progress";

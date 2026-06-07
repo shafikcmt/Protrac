@@ -63,6 +63,16 @@ export default function FinishingKioskPage() {
 
   const { chartData, summaryStats } = useFinishingChartData(finishingOrders);
 
+  const qcPassRate = useMemo(() => {
+    const checks = chartData.qualityCheck;
+    const total = checks.reduce(
+      (s, item) => s + item.qc_pass + item.qc_fail + item.qc_rework,
+      0
+    );
+    const pass = checks.reduce((s, item) => s + item.qc_pass, 0);
+    return total > 0 ? (pass / total) * 100 : null;
+  }, [chartData.qualityCheck]);
+
   // Group orders once; both carousel and table receive pre-grouped data
   const groups = useMemo(() => groupOrders(finishingOrders), [finishingOrders]);
 
@@ -111,7 +121,12 @@ export default function FinishingKioskPage() {
       {tvMode ? (
         <OrdersCarousel groups={groups} />
       ) : (
-        <OrdersTable groups={groups} isLoading={isLoading} />
+        <OrdersTable
+          groups={groups}
+          isLoading={isLoading}
+          summaryStats={summaryStats}
+          qcPassRate={qcPassRate}
+        />
       )}
 
       {/* Bottom info bar */}
