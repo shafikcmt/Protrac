@@ -160,13 +160,13 @@ const flatKpiBase =
   "relative rounded-[20px] overflow-hidden border shadow-[0_10px_24px_rgba(0,0,0,0.22)] h-full";
 
 const flatKpiTitle =
-  "px-4 py-2.5 text-center text-lg font-bold uppercase tracking-widest opacity-70 leading-none border-b";
+  "px-4 py-1.5 text-center text-lg font-bold uppercase tracking-widest opacity-70 leading-none border-b";
 
 const flatKpiValue =
-  "px-4 pt-2 pb-0 text-center text-[54px] md:text-[64px] xl:text-[72px] leading-none font-black tabular-nums";
+  "px-4 pt-2 pb-0 text-center text-[36px] md:text-[42px] xl:text-[52px] leading-none font-black tabular-nums";
 
 const flatKpiSub =
-  "pt-1.5 pb-3 text-center text-xl font-semibold opacity-60";
+  "pt-1 pb-2 text-center text-sm font-semibold opacity-60";
 
 const targetWrap =
   "h-full min-h-0 overflow-hidden rounded-[22px] border border-white/10 bg-[linear-gradient(180deg,rgba(7,15,30,0.96),rgba(8,18,35,0.98))] shadow-[0_10px_28px_rgba(0,0,0,0.28)]";
@@ -222,10 +222,10 @@ function FlatInfoKpiCard({
   icon?: React.ReactNode;
 }) {
   return (
-    <Card className={cn(flatKpiBase, "min-h-[220px]", cardClass)}>
+    <Card className={cn(flatKpiBase, cardClass)}>
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),transparent_45%)] pointer-events-none" />
       {icon && (
-        <div className="absolute top-5 right-5 opacity-10 w-20 h-20 pointer-events-none">
+        <div className="absolute top-4 right-4 opacity-10 w-14 h-14 pointer-events-none">
           {icon}
         </div>
       )}
@@ -264,7 +264,7 @@ function WipRow({
       className={cn(
         "group relative overflow-hidden rounded-xl border transition-all duration-300",
         "border-white/10 bg-slate-800/30 dark:bg-slate-800/50",
-        compact ? "px-4 py-2.5" : "px-4 py-3"
+        "px-3 py-1.5"
       )}
     >
       <div className="pointer-events-none absolute inset-y-0 left-0 w-[3px] rounded-l-[18px] bg-white/8" />
@@ -278,9 +278,7 @@ function WipRow({
       <div
         className={cn(
           "grid items-center",
-          compact
-            ? "grid-cols-[auto_minmax(0,1fr)_72px] gap-2.5"
-            : "grid-cols-[auto_minmax(0,1fr)_82px] gap-3"
+          "grid-cols-[auto_minmax(0,1fr)_60px] gap-2"
         )}
       >
         <div className="flex items-center gap-2.5 min-w-0">
@@ -288,7 +286,7 @@ function WipRow({
             className={cn(
               "flex shrink-0 items-center justify-center rounded-[12px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_4px_10px_rgba(0,0,0,0.16)]",
               toneStyle.iconWrap,
-              compact ? "h-9 w-9" : "h-10 w-10"
+              "h-7 w-7"
             )}
           >
             {icon}
@@ -298,7 +296,7 @@ function WipRow({
             <div
               className={cn(
                 "truncate font-bold tracking-[0.01em] text-white leading-none [text-shadow:0_2px_8px_rgba(0,0,0,0.30)]",
-                "text-lg"
+                "text-sm"
               )}
             >
               {label}
@@ -317,7 +315,7 @@ function WipRow({
             className={cn(
               "relative overflow-hidden rounded-full border shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
               toneStyle.rail,
-              "h-3"
+              "h-2"
             )}
           >
             <div
@@ -335,7 +333,7 @@ function WipRow({
           className={cn(
             "rounded-[12px] border text-center tabular-nums font-black leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_4px_10px_rgba(0,0,0,0.14)]",
             toneStyle.chip,
-            "px-3 py-2 text-2xl"
+            "px-2 py-1 text-xl"
           )}
         >
           {value.toLocaleString()}
@@ -458,7 +456,7 @@ const tdNum =
 
   return (
     <div className="h-full w-full p-2 text-white">
-      <div className="grid h-full grid-rows-[220px_minmax(0,1fr)] gap-2">
+      <div className="grid h-full grid-rows-[160px_minmax(0,1fr)] gap-2">
         <div className="grid h-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <FlatInfoKpiCard
             title="Target / Actual"
@@ -669,7 +667,7 @@ const tdNum =
 >
   <CardHeader className="relative pb-0 pt-1 shrink-0">
     <div className="flex items-center justify-between">
-      <CardTitle className="text-white font-black tracking-tight text-[34px] xl:text-[40px] leading-none drop-shadow-[0_3px_14px_rgba(0,0,0,0.42)]">
+      <CardTitle className="text-white font-black tracking-tight text-2xl xl:text-3xl leading-none drop-shadow-[0_3px_14px_rgba(0,0,0,0.42)]">
         WIP Summary
       </CardTitle>
 
@@ -680,8 +678,8 @@ const tdNum =
   </CardHeader>
 
   <CardContent className="pt-1 pb-1.5 flex-1 min-h-0">
-    <div className="grid h-full content-start gap-1.5">
-      <div className="grid gap-1.5">
+    <div className="grid h-full content-start gap-1">
+      <div className="grid gap-1">
         <WipRow
           label="Total Input"
           value={wip.totalInput}
@@ -720,7 +718,7 @@ const tdNum =
         </div>
       </div>
 
-      <div className="grid gap-1.5">
+      <div className="grid gap-1">
         {visibleWipRows.map((r, idx) => {
           const partName = String(r.label)
             .replace(/\s*wip\s*$/i, "")

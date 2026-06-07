@@ -52,10 +52,10 @@ export default function SlideThree({
 
   const compact = compactH;
 
-  const headPad = compact ? "px-3 py-2.5" : "px-4 py-3";
-  const rowPad = compact ? "px-3 py-2" : "px-4 py-2.5";
-  const headText = compact ? "text-[18px]" : "text-[20px]";
-  const bodyText = compact ? "text-[22px]" : "text-[26px]";
+  const headPad = "px-3 py-2";
+  const rowPad = "px-3 py-1.5";
+  const headText = "text-[13px]";
+  const bodyText = "text-[14px]";
 
 const dhuTone = (dhu: number) => {
   if (dhu <= 2) {
@@ -93,21 +93,18 @@ const defectTone = (qty: number) => {
         <CardHeader className="relative shrink-0 pb-1 pt-1.5">
           <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(37,99,235,0.28),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)]" />
           <div className="flex items-center justify-center">
-            <CardTitle className="text-slate-950 dark:text-white text-center font-black tracking-[-0.035em] text-[44px] xl:text-[56px] leading-none drop-shadow-[0_1px_0_rgba(255,255,255,0.96)] dark:drop-shadow-[0_7px_26px_rgba(0,0,0,0.60)]">
+            <CardTitle className="text-slate-950 dark:text-white text-center font-black tracking-[-0.035em] text-2xl xl:text-3xl leading-none drop-shadow-[0_1px_0_rgba(255,255,255,0.96)] dark:drop-shadow-[0_7px_26px_rgba(0,0,0,0.60)]">
               Quality Monitoring
             </CardTitle>
           </div>
         </CardHeader>
 
         <CardContent className="min-h-0 flex-1 pt-1 pb-2">
-          <div className="h-full min-h-0 overflow-hidden rounded-[24px] border border-slate-300/90 bg-[linear-gradient(180deg,#f7fbff_0%,#edf4fb_100%)] shadow-[0_16px_34px_rgba(37,99,235,0.10)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(7,18,37,0.98),rgba(6,15,31,0.99))] dark:shadow-[0_18px_44px_rgba(0,0,0,0.34)]">
+          <div className="h-full min-h-0 overflow-hidden rounded-[24px] border border-slate-300/90 bg-[linear-gradient(180deg,#f7fbff_0%,#edf4fb_100%)] shadow-[0_16px_34px_rgba(37,99,235,0.10)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(7,18,37,0.98),rgba(6,15,31,0.99))] dark:shadow-[0_18px_44px_rgba(0,0,0,0.34)] flex flex-col">
             <div className="h-1.5 w-full shrink-0 bg-[linear-gradient(90deg,rgba(59,130,246,0.62),rgba(34,211,238,0.42),rgba(245,158,11,0.42),rgba(168,85,247,0.42))] dark:bg-[linear-gradient(90deg,rgba(59,130,246,0.26),rgba(34,211,238,0.18),rgba(245,158,11,0.18),rgba(168,85,247,0.22))]" />
 
-            <div
-              className="h-full min-h-0 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden [&::-webkit-scrollbar-thumb]:hidden [&::-webkit-scrollbar-track]:hidden"
-              style={{ msOverflowStyle: "none", scrollbarWidth: "none" }}
-            >
-              <table className={cn("w-full table-fixed border-collapse text-slate-900 dark:text-white", bodyText)}>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <table className={cn("h-full w-full table-fixed border-collapse text-slate-900 dark:text-white", bodyText)}>
                 <colgroup>
                   <col style={{ width: compact ? "165px" : "190px" }} />
                   <col style={{ width: compact ? "195px" : "230px" }} />
@@ -178,7 +175,7 @@ const defectTone = (qty: number) => {
                         key={r.hour}
                         className={cn(
                           "transition-colors duration-200",
-                          "h-[56px]",
+                          "h-[44px]",
                           zebra ? "bg-slate-50 dark:bg-white/[0.02]" : "bg-white dark:bg-transparent",
                           "hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                         )}
@@ -192,18 +189,18 @@ const defectTone = (qty: number) => {
                           <div className="flex items-center gap-3">
                             <div
                               className={cn(
-                                "flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
+                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
                                 "border border-slate-300/80 bg-[linear-gradient(180deg,#ffffff_0%,#edf3fa_100%)]",
-                                "text-[17px] font-black leading-none text-slate-800",
-                                "shadow-[inset_0_1px_0_rgba(255,255,255,0.94),0_6px_12px_rgba(15,23,42,0.12)]",
+                                "text-[12px] font-black leading-none text-slate-800",
+                                "shadow-[inset_0_1px_0_rgba(255,255,255,0.94),0_4px_8px_rgba(15,23,42,0.10)]",
                                 "dark:border-white/18 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.10))]",
                                 "dark:!text-white dark:[text-shadow:0_1px_10px_rgba(0,0,0,0.85)]",
-                                "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_6px_16px_rgba(0,0,0,0.30)]"
+                                "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_4px_10px_rgba(0,0,0,0.28)]"
                               )}
                             >
                               {r.hour}
                             </div>
-                            <div className="text-[20px] font-black tracking-[-0.02em] text-slate-950 leading-none drop-shadow-[0_1px_0_rgba(255,255,255,0.9)] dark:text-white dark:drop-shadow-[0_2px_10px_rgba(0,0,0,0.38)]">
+                            <div className="text-sm font-black tracking-[-0.02em] text-slate-950 leading-none drop-shadow-[0_1px_0_rgba(255,255,255,0.9)] dark:text-white dark:drop-shadow-[0_2px_10px_rgba(0,0,0,0.38)]">
                               Hour {r.hour}
                             </div>
                           </div>
@@ -218,10 +215,10 @@ const defectTone = (qty: number) => {
                           <div className="flex items-center justify-end">
                             <span
                               className={cn(
-                                "inline-flex min-w-[110px] justify-center rounded-full border px-4 py-2 text-[32px] font-black tabular-nums tracking-[-0.02em]",
+                                "inline-flex min-w-[64px] justify-center rounded-full border px-3 py-1 text-lg font-black tabular-nums tracking-[-0.02em]",
                                 "text-slate-950 dark:!text-white",
                                 "[text-shadow:0_1px_0_rgba(255,255,255,0.55)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
-                                "shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_4px_12px_rgba(0,0,0,0.22)]",
+                                "shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_2px_8px_rgba(15,23,42,0.10)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_8px_rgba(0,0,0,0.20)]",
                                 dhuStyle.chip
                               )}
                             >
@@ -236,17 +233,21 @@ const defectTone = (qty: number) => {
                             rowPad
                           )}
                         >
-                          <span
-                            className={cn(
-                              "inline-flex min-w-[90px] justify-center rounded-full border px-4 py-2 text-[32px] font-black tabular-nums tracking-[-0.02em]",
-                              "text-slate-950 dark:!text-white",
-                              "[text-shadow:0_1px_0_rgba(255,255,255,0.55)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
-                              "shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_4px_12px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_4px_12px_rgba(0,0,0,0.22)]",
-                              defectTone(defects)
-                            )}
-                          >
-                            {defects}
-                          </span>
+                          {defects === 0 ? (
+                            <span className="text-slate-400 dark:text-slate-500 font-bold text-sm">0</span>
+                          ) : (
+                            <span
+                              className={cn(
+                                "inline-flex min-w-[56px] justify-center rounded-full border px-3 py-1 text-lg font-black tabular-nums tracking-[-0.02em]",
+                                "text-slate-950 dark:!text-white",
+                                "[text-shadow:0_1px_0_rgba(255,255,255,0.55)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
+                                "shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_2px_8px_rgba(15,23,42,0.10)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_8px_rgba(0,0,0,0.20)]",
+                                defectTone(defects)
+                              )}
+                            >
+                              {defects}
+                            </span>
+                          )}
                         </td>
 
                         <td
@@ -256,12 +257,12 @@ const defectTone = (qty: number) => {
                           )}
                         >
                           {defects > 0 ? (
-                            <div className="flex flex-wrap gap-3">
+                            <div className="flex flex-wrap gap-1.5">
                               {(r.remarks ?? []).slice(0, 3).map((code: string, i2) => (
                                 <span
                                   key={`${code}-${i2}`}
                                   className={cn(
-                                      "inline-flex items-center rounded-full border px-5 py-2.5 text-[22px] font-black tracking-[0.005em]",
+                                      "inline-flex items-center rounded-full border px-3 py-1 text-sm font-black tracking-[0.005em]",
                                       "text-slate-950 dark:!text-white",
                                       "[text-shadow:0_1px_0_rgba(255,255,255,0.42)] dark:[text-shadow:0_1px_12px_rgba(0,0,0,0.85)]",
                                       "shadow-[inset_0_1px_0_rgba(255,255,255,0.30)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
@@ -275,7 +276,7 @@ const defectTone = (qty: number) => {
                               ))}
                             </div>
                           ) : (
-                            <span className="text-[26px] font-black text-slate-800 dark:text-white">—</span>
+                            <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">No defects</span>
                           )}
                         </td>
 
@@ -289,12 +290,12 @@ const defectTone = (qty: number) => {
                             <button
                               type="button"
                               onClick={() => setOpenHour(r)}
-                              className="inline-flex items-center rounded-xl border border-cyan-400/70 bg-[linear-gradient(180deg,#c8f1ff_0%,#8de0fb_100%)] px-4 py-2 text-[18px] font-black text-cyan-950 shadow-[0_8px_18px_rgba(6,182,212,0.18)] transition hover:brightness-[0.98] dark:border-cyan-300/26 dark:bg-[linear-gradient(180deg,rgba(34,211,238,0.24),rgba(14,165,233,0.20))] dark:text-white dark:shadow-[0_8px_18px_rgba(34,211,238,0.14),inset_0_1px_0_rgba(255,255,255,0.10)] dark:hover:bg-cyan-400/22"
+                              className="inline-flex items-center rounded-lg border border-cyan-400/70 bg-[linear-gradient(180deg,#c8f1ff_0%,#8de0fb_100%)] px-3 py-1 text-sm font-black text-cyan-950 shadow-[0_4px_10px_rgba(6,182,212,0.16)] transition hover:brightness-[0.98] dark:border-cyan-300/26 dark:bg-[linear-gradient(180deg,rgba(34,211,238,0.24),rgba(14,165,233,0.20))] dark:text-white dark:shadow-[0_4px_10px_rgba(34,211,238,0.12),inset_0_1px_0_rgba(255,255,255,0.10)] dark:hover:bg-cyan-400/22"
                             >
                               <span className="tracking-[-0.01em] text-inherit drop-shadow-[0_1px_0_rgba(255,255,255,0.45)] dark:[text-shadow:0_1px_10px_rgba(0,0,0,0.7)]">Details</span>
                             </button>
                           ) : (
-                            <span className="text-[26px] font-black text-slate-800 dark:text-white">—</span>
+                            <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">—</span>
                           )}
                         </td>
                       </tr>
@@ -306,6 +307,7 @@ const defectTone = (qty: number) => {
           </div>
         </CardContent>
       </Card>
+
 
       {openHour ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center">

@@ -130,7 +130,7 @@ type QualityRow = {
 };
 
 const shellBg =
-  "bg-[radial-gradient(circle_at_top_left,#162033_0%,#0f172a_38%,#050814_100%)]";
+  "bg-gray-50 dark:bg-[radial-gradient(circle_at_top_left,#162033_0%,#0f172a_38%,#050814_100%)]";
 
 export default function Page() {
   const sp = useSearchParams();
@@ -654,7 +654,7 @@ export default function Page() {
     <div ref={ref} className="w-full">
       <div
         className={cn(
-          "relative w-full overflow-hidden rounded-xl border border-white/10",
+          "relative w-full overflow-hidden rounded-xl border border-slate-200 dark:border-white/10",
           shellBg
         )}
         style={{ height: height ? `${height}px` : "calc(100vh - 160px)", ...uiVars }}
@@ -680,13 +680,13 @@ export default function Page() {
           <div className={cn("px-4", compactH ? "pt-2" : "pt-3")}>
             <div className="flex items-end justify-between gap-3 relative">
               <div className="min-w-0">
-                <div className="tracking-[0.25em] uppercase text-white/60 text-[var(--fs-sub)]">
+                <div className="tracking-[0.25em] uppercase text-slate-500 dark:text-white/60 text-[var(--fs-sub)]">
                   Sewing Dashboard
                 </div>
-                <div className="font-extrabold text-white truncate text-[var(--fs-title)] drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">
+                <div className="font-extrabold text-slate-800 dark:text-white truncate text-[var(--fs-title)] drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">
                   {current?.title ?? ""}
                 </div>
-                <div className="text-white/65 truncate text-[var(--fs-sub)] bg-white/10 px-2.5 py-1 rounded-full w-fit">
+                <div className="text-slate-600 dark:text-white/65 truncate text-[var(--fs-sub)] bg-slate-100/80 dark:bg-white/10 px-2.5 py-1 rounded-full w-fit">
                   {activeLines.length ? `${activeLines.length} line(s)` : isLoading ? "Loading..." : "No data"}
                 </div>
               </div>
@@ -714,7 +714,7 @@ export default function Page() {
 
               <div className="flex items-center gap-2">
                 {clock && (
-                  <span className="hidden md:block font-mono text-xl font-semibold tabular-nums text-slate-300 dark:text-slate-300 mr-1">
+                  <span className="hidden md:block font-mono text-xl font-semibold tabular-nums text-slate-600 dark:text-slate-300 mr-1">
                     {clock}
                   </span>
                 )}
@@ -735,7 +735,7 @@ export default function Page() {
 
                 <button
                   onClick={() => setAutoPlay((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] backdrop-blur-md px-2.5 py-2 font-extrabold text-white hover:bg-white/[0.10] transition text-[var(--fs-sub)]"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 dark:border-white/10 bg-slate-100/80 dark:bg-white/[0.06] backdrop-blur-md px-2.5 py-2 font-extrabold text-slate-700 dark:text-white hover:bg-slate-200 dark:hover:bg-white/[0.10] transition text-[var(--fs-sub)]"
                 >
                   {autoPlay ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                   {autoPlay ? "Auto (30s)" : "Fixed"}
@@ -753,7 +753,7 @@ export default function Page() {
 
             <button
               onClick={() => setIndex((i) => (i - 1 + slides.length) % slides.length)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-slate-800/70 hover:bg-slate-700 text-white shadow-md transition-colors"
+              className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-800/70 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-white shadow-md transition-colors"
               aria-label="Previous slide"
             >
               <ChevronLeft className="h-6 w-6" />
@@ -761,7 +761,7 @@ export default function Page() {
 
             <button
               onClick={() => setIndex((i) => (i + 1) % slides.length)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-slate-800/70 hover:bg-slate-700 text-white shadow-md transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-800/70 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-white shadow-md transition-colors"
               aria-label="Next slide"
             >
               <ChevronRight className="h-6 w-6" />

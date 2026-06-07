@@ -71,25 +71,25 @@ export default function SlideTwo({
   const rowHeightClass =
     rowCount <= 6
       ? compact
-        ? "h-[70px]"
-        : "h-[82px]"
+        ? "h-[52px]"
+        : "h-[60px]"
       : rowCount <= 8
         ? compact
-          ? "h-[70px]"
-          : "h-[76px]"
+          ? "h-[48px]"
+          : "h-[56px]"
         : compact
-          ? "h-[70px]"
-          : "h-[86px]";
+          ? "h-[52px]"
+          : "h-[62px]";
 
-  const headerHeightClass = compact ? "h-[62px]" : "h-[72px]";
-  const titleClass = compact ? "text-[34px] xl:text-[38px]" : "text-[42px] xl:text-[48px]";
+  const headerHeightClass = compact ? "h-[46px]" : "h-[52px]";
+  const titleClass = "text-2xl font-black";
 
-  const partText = compact ? "text-[22px]" : "text-[25px]";
-  const headText = compact ? "text-[20px]" : "text-[22px]";
-  const targetText = compact ? "text-[23px]" : "text-[25px]";
-  const valueText = compact ? "text-[25px]" : "text-[28px]";
+  const partText = compact ? "text-[15px]" : "text-[17px]";
+  const headText = compact ? "text-[13px]" : "text-[14px]";
+  const targetText = compact ? "text-[15px]" : "text-[17px]";
+  const valueText = compact ? "text-[17px]" : "text-[19px]";
 
-  const cellOuter = compact ? "px-1 py-1" : "px-3 py-2.5";
+  const cellOuter = compact ? "px-1 py-0.5" : "px-2 py-1.5";
   const labelPad = "px-5";
 
   const valueBoxClass = (success: boolean) =>
@@ -137,10 +137,10 @@ export default function SlideTwo({
       >
         <CardHeader className="relative shrink-0 pb-3 pt-4">
           <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(148,163,184,0.35),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.24),transparent)]" />
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-start">
             <CardTitle
               className={cn(
-                "text-center font-black leading-none tracking-tight text-slate-900 drop-shadow-[0_1px_0_rgba(255,255,255,0.85)] dark:text-white dark:drop-shadow-[0_2px_12px_rgba(0,0,0,0.48)]",
+                "font-black leading-none tracking-tight text-slate-900 drop-shadow-[0_1px_0_rgba(255,255,255,0.85)] dark:text-white dark:drop-shadow-[0_2px_12px_rgba(0,0,0,0.48)]",
                 titleClass
               )}
             >
@@ -150,11 +150,11 @@ export default function SlideTwo({
         </CardHeader>
 
         <CardContent className="min-h-0 flex-1 pb-3 pt-1">
-          <div className="h-full overflow-hidden rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fdfefe_0%,#f3f8fe_100%)] shadow-[0_16px_40px_rgba(148,163,184,0.16)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(7,15,30,0.98),rgba(7,13,24,0.99))] dark:shadow-[0_16px_40px_rgba(0,0,0,0.30)]">
-            <div className="h-1.5 w-full bg-[linear-gradient(90deg,rgba(56,189,248,0.22),rgba(59,130,246,0.16),rgba(168,85,247,0.20),rgba(245,158,11,0.18))]" />
+          <div className="h-full overflow-hidden rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fdfefe_0%,#f3f8fe_100%)] shadow-[0_16px_40px_rgba(148,163,184,0.16)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(7,15,30,0.98),rgba(7,13,24,0.99))] dark:shadow-[0_16px_40px_rgba(0,0,0,0.30)] flex flex-col">
+            <div className="h-1.5 w-full shrink-0 bg-[linear-gradient(90deg,rgba(56,189,248,0.22),rgba(59,130,246,0.16),rgba(168,85,247,0.20),rgba(245,158,11,0.18))]" />
 
-            <div className="flex h-full flex-col">
-              <table className="w-full table-fixed border-collapse text-slate-900 dark:text-white">
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <table className="h-full w-full table-fixed border-collapse text-slate-900 dark:text-white">
                 <colgroup>
                   <col style={{ width: compact ? "190px" : "220px" }} />
                   <col style={{ width: compact ? "94px" : "110px" }} />
@@ -268,10 +268,16 @@ export default function SlideTwo({
                                 cellOuter
                               )}
                             >
-                              <div className={cn(valueBoxClass(success), "my-auto h-[60%]")}>
-                                <div className={valueFillClass(success)} style={{ width: `${pct}%` }} />
-                                <div className={valueTextClass(success)}>{value}</div>
-                              </div>
+                              {value === 0 ? (
+                                <div className="flex h-full items-center justify-center">
+                                  <span className="text-slate-400 dark:text-slate-500 font-bold text-sm">0</span>
+                                </div>
+                              ) : (
+                                <div className={cn(valueBoxClass(success), "my-auto h-[60%]")}>
+                                  <div className={valueFillClass(success)} style={{ width: `${pct}%` }} />
+                                  <div className={valueTextClass(success)}>{value}</div>
+                                </div>
+                              )}
                             </td>
                           );
                         })}
