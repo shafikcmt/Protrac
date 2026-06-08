@@ -1371,35 +1371,9 @@ def _get_assemble_hourly_totals(
         event_type__in=event_types,
         created_at__date=target_date,
     )
-    qs = _apply_active_only_by_delivery(qs, "bundle__order__delivery_date", active_only)
-
-    # Prefer bundle__line filter (stable & same as parts)
-    line_field, _ = _bundle_line_and_issued_fields()
-    try:
-        qs_line = qs.filter(**{f"bundle__{line_field}": production_line})
-        if qs_line.exists():
-            qs = qs_line
-        else:
-            # fallback: scanner name contains line
-            line_name = str(getattr(production_line, "name", "") or getattr(production_line, "code", "") or "").strip()
-            if line_name:
-                qs = qs.filter(scanner__name__icontains=line_name)
-    except Exception:
-        line_name = str(getattr(production_line, "name", "") or getattr(production_line, "code", "") or "").strip()
-        if line_name:
-            qs = qs.filter(scanner__name__icontains=line_name)
-
-    # same filters (bundle based)
-    if order_id:
-        qs = qs.filter(bundle__order_id=order_id)
-    if style_id:
-        qs = qs.filter(bundle__order__style_id=style_id)
-    if buyer_id:
-        qs = qs.filter(bundle__order__style__buyer_id=buyer_id)
-    if size:
-        qs = qs.filter(bundle__order__size__name=size)
-    if color:
-        qs = qs.filter(bundle__order__color__name=color)
+    # Filter by scanner.production_line — assembly scans set garment (not bundle),
+    # so bundle__line is always NULL and must not be used here.
+    qs = qs.filter(scanner__production_line=production_line)
 
     if not qs.exists():
         return [0] * hour_count
@@ -1409,7 +1383,6 @@ def _get_assemble_hourly_totals(
         start_local = _get_common_hour_anchor_local(production_line, target_date, active_only=active_only)
 
     totals = [0] * hour_count
-    qty_fields = ("qty", "quantity", "count")
 
     for s in qs.iterator(chunk_size=2000):
         ts = getattr(s, "created_at", None)
@@ -1421,18 +1394,7 @@ def _get_assemble_hourly_totals(
         if idx < 0:
             continue
 
-        qv = None
-        for f in qty_fields:
-            if hasattr(s, f):
-                qv = getattr(s, f)
-                break
-
-        try:
-            q = int(qv) if qv not in (None, "", 0) else 1
-        except Exception:
-            q = 1
-
-        totals[idx] += max(1, q)
+        totals[idx] += 1
 
     return totals
 
