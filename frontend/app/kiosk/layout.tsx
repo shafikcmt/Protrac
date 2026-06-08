@@ -17,9 +17,9 @@ export default function KioskLayout({
   return (
     <ProtectedRoute>
       <KioskContext.Provider value={{ filters, setFilters }}>
-        <div className="min-h-screen bg-background">
+        <div className="h-screen overflow-hidden flex flex-col bg-background">
           <KioskHeader />
-          <main className="p-6">{children}</main>
+          <main className="flex-1 overflow-hidden min-h-0 p-6">{children}</main>
         </div>
       </KioskContext.Provider>
     </ProtectedRoute>

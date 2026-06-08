@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Pause, Play, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Pause, Play, RefreshCw, Palette } from "lucide-react";
 import { useSewingDashboardV2 } from "@/hooks/api";
 import { useKioskFilters } from "../../kiosk-context";
 
@@ -129,8 +129,16 @@ type QualityRow = {
   details?: QualityDetailLine[];
 };
 
-const shellBg =
-  "bg-gray-50 dark:bg-[radial-gradient(circle_at_top_left,#162033_0%,#0f172a_38%,#050814_100%)]";
+type SlideInterval = 0 | 15 | 30 | 45 | 60;
+type KioskTheme = "dark" | "light" | "midnight" | "ocean";
+const SLIDE_INTERVALS: SlideInterval[] = [15, 30, 45, 60, 0];
+const INTERVAL_LABEL: Record<number, string> = {
+  15: "Auto (15s)", 30: "Auto (30s)", 45: "Auto (45s)", 60: "Auto (60s)", 0: "Manual",
+};
+const THEMES: KioskTheme[] = ["dark", "light", "midnight", "ocean"];
+const THEME_LABEL: Record<KioskTheme, string> = {
+  dark: "Dark", light: "Light", midnight: "Midnight", ocean: "Ocean",
+};
 
 export default function Page() {
   const sp = useSearchParams();
@@ -187,17 +195,21 @@ export default function Page() {
     }
   }, [isRefetching, showRefreshIndicator]);
 
-  const [clock, setClock] = React.useState("");
+  const [clockStr, setClockStr] = React.useState("");
+  const [colonOn, setColonOn] = React.useState(true);
   React.useEffect(() => {
-    const fmt = () =>
-      new Date().toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      });
-    setClock(fmt());
-    const id = setInterval(() => setClock(fmt()), 1000);
+    const fmt = () => {
+      const d = new Date();
+      const h = String(d.getHours()).padStart(2, "0");
+      const m = String(d.getMinutes()).padStart(2, "0");
+      const s = String(d.getSeconds()).padStart(2, "0");
+      return `${h}:${m}:${s}`;
+    };
+    setClockStr(fmt());
+    const id = setInterval(() => {
+      setClockStr(fmt());
+      setColonOn((v) => !v);
+    }, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -531,14 +543,23 @@ export default function Page() {
   }, [activeLines, hourCount, perHourTarget]);
 
   const assembleTotals = React.useMemo(() => {
+    const matchesAssemble = (r: any) => {
+      const n = String(r?.part ?? r?.name ?? "").toLowerCase().trim();
+      return n === "assemble total" || n === "assemble" || n === "assembly total" || n === "assembly";
+    };
+
     const hasAny =
-      activeLines.some((l) => Array.isArray((l as any)?.assemble_hourly_totals)) ||
+      activeLines.some((l) => {
+        const f =
+          (l as any)?.assemble_hourly_totals ??
+          (l as any)?.assemble_totals ??
+          (l as any)?.hourly_assemble_totals;
+        return Array.isArray(f) && f.length > 0;
+      }) ||
       activeLines.some(
         (l) =>
           Array.isArray((l as any)?.parts_hourly_data) &&
-          (l as any).parts_hourly_data.some(
-            (r: any) => String(r?.part ?? "").toLowerCase().trim() === "assemble total"
-          )
+          (l as any).parts_hourly_data.some(matchesAssemble)
       );
 
     if (!hasAny) return padHours([], hourCount);
@@ -546,15 +567,15 @@ export default function Page() {
     const totals: number[] = Array.from({ length: hourCount }, () => 0);
 
     for (const l of activeLines) {
-      let src: unknown = (l as any)?.assemble_hourly_totals;
+      let src: unknown =
+        (l as any)?.assemble_hourly_totals ??
+        (l as any)?.assemble_totals ??
+        (l as any)?.hourly_assemble_totals;
 
       if (!Array.isArray(src)) {
-        const row =
-          Array.isArray((l as any)?.parts_hourly_data)
-            ? (l as any).parts_hourly_data.find(
-                (r: any) => String(r?.part ?? "").toLowerCase().trim() === "assemble total"
-              )
-            : undefined;
+        const row = Array.isArray((l as any)?.parts_hourly_data)
+          ? (l as any).parts_hourly_data.find(matchesAssemble)
+          : undefined;
 
         src = Array.isArray(row?.hours) ? row!.hours : [];
       }
@@ -612,8 +633,40 @@ export default function Page() {
   );
 
   const [index, setIndex] = React.useState<number>(0);
-  const [autoPlay, setAutoPlay] = React.useState(true);
-  useInterval(() => setIndex((i) => (i + 1) % slides.length), autoPlay ? 30000 : null);
+
+  const [slideInterval, setSlideInterval] = React.useState<SlideInterval>(() => {
+    if (typeof window !== "undefined") {
+      const n = Number(localStorage.getItem("kiosk-slide-interval") ?? "30");
+      return ([0, 15, 30, 45, 60].includes(n) ? n : 30) as SlideInterval;
+    }
+    return 30;
+  });
+
+  const [kioskTheme, setKioskTheme] = React.useState<KioskTheme>(() => {
+    if (typeof window !== "undefined") {
+      const s = localStorage.getItem("kiosk-theme") ?? "";
+      return (["dark", "light", "midnight", "ocean"].includes(s) ? s as KioskTheme : "dark");
+    }
+    return "dark";
+  });
+
+  const cycleInterval = React.useCallback(() => {
+    setSlideInterval((cur) => {
+      const next = SLIDE_INTERVALS[(SLIDE_INTERVALS.indexOf(cur) + 1) % SLIDE_INTERVALS.length];
+      if (typeof window !== "undefined") localStorage.setItem("kiosk-slide-interval", String(next));
+      return next;
+    });
+  }, []);
+
+  const cycleTheme = React.useCallback(() => {
+    setKioskTheme((cur) => {
+      const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length];
+      if (typeof window !== "undefined") localStorage.setItem("kiosk-theme", next);
+      return next;
+    });
+  }, []);
+
+  useInterval(() => setIndex((i) => (i + 1) % slides.length), slideInterval > 0 ? slideInterval * 1000 : null);
 
   const safeIndex = ((index % slides.length) + slides.length) % slides.length;
   const current = slides[safeIndex] ?? slides[0];
@@ -651,23 +704,29 @@ export default function Page() {
   }
 
   return (
-    <div ref={ref} className="w-full">
+    <div ref={ref} className="dark w-full">
       <div
-        className={cn(
-          "relative w-full overflow-hidden rounded-xl border border-slate-200 dark:border-white/10",
-          shellBg
-        )}
-        style={{ height: height ? `${height}px` : "calc(100vh - 160px)", ...uiVars }}
+        className="relative w-full overflow-hidden rounded-xl border border-white/10 kiosk-noscroll"
+        data-theme={kioskTheme}
+        style={{
+          height: height ? `${height}px` : "calc(100vh - 160px)",
+          ...uiVars,
+          background: "var(--kiosk-bg, #0A0E1A)",
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.04) 1px, transparent 0)",
+          backgroundSize: "32px 32px",
+        }}
       >
         {/* Progress bar */}
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-white/10 dark:bg-white/10 bg-slate-200 z-20 rounded-t-xl overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-white/10 z-20 rounded-t-xl overflow-hidden">
           <div
-            key={`progress-${safeIndex}-${autoPlay ? "play" : "pause"}`}
-            className={cn(
-              "h-full dark:bg-white bg-blue-500",
-              autoPlay ? "animate-[progressFill_30s_linear_forwards]" : ""
-            )}
-            style={autoPlay ? undefined : { width: "0%" }}
+            key={`progress-${safeIndex}-${slideInterval}`}
+            className="h-full bg-white/80"
+            style={
+              slideInterval > 0
+                ? { animation: `progressFill ${slideInterval}s linear forwards` }
+                : { width: "0%" }
+            }
           />
         </div>
 
@@ -680,19 +739,19 @@ export default function Page() {
           <div className={cn("px-4", compactH ? "pt-2" : "pt-3")}>
             <div className="flex items-end justify-between gap-3 relative">
               <div className="min-w-0">
-                <div className="tracking-[0.25em] uppercase text-slate-500 dark:text-white/60 text-[var(--fs-sub)]">
+                <div className="kiosk-header tracking-[0.25em] uppercase text-white/45 text-[var(--fs-sub)]">
                   Sewing Dashboard
                 </div>
-                <div className="font-extrabold text-slate-800 dark:text-white truncate text-[var(--fs-title)] drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">
+                <div className="kiosk-header font-bold text-white truncate text-[var(--fs-title)] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
                   {current?.title ?? ""}
                 </div>
-                <div className="text-slate-600 dark:text-white/65 truncate text-[var(--fs-sub)] bg-slate-100/80 dark:bg-white/10 px-2.5 py-1 rounded-full w-fit">
+                <div className="text-white/55 truncate text-[var(--fs-sub)] bg-white/10 border border-white/15 px-2.5 py-1 rounded-full w-fit">
                   {activeLines.length ? `${activeLines.length} line(s)` : isLoading ? "Loading..." : "No data"}
                 </div>
               </div>
 
               <div className="absolute left-1/2 -translate-x-1/2 bottom-0">
-                <div className="font-extrabold tracking-[0.18em] text-white drop-shadow-[0_2px_16px_rgba(0,0,0,0.55)] text-[calc(var(--fs-title)*1.35)]">
+                <div className="kiosk-header font-bold tracking-[0.18em] text-white drop-shadow-[0_2px_16px_rgba(0,0,0,0.55)] text-[calc(var(--fs-title)*1.35)]">
                   {(() => {
                     if (isTvMode) return String(currentLine?.production_line_name ?? "—").toUpperCase();
 
@@ -713,10 +772,24 @@ export default function Page() {
               </div>
 
               <div className="flex items-center gap-2">
-                {clock && (
-                  <span className="hidden md:block font-mono text-xl font-semibold tabular-nums text-slate-600 dark:text-slate-300 mr-1">
-                    {clock}
-                  </span>
+                {clockStr && (
+                  <div className="hidden md:flex items-center gap-2 mr-1">
+                    <span className="font-mono text-2xl font-bold tabular-nums text-white tracking-wider">
+                      {clockStr.split(":").map((part, i) => (
+                        <React.Fragment key={i}>
+                          {i > 0 && (
+                            <span style={{ opacity: colonOn ? 1 : 0.2, transition: "opacity 0.1s" }}>
+                              :
+                            </span>
+                          )}
+                          {part}
+                        </React.Fragment>
+                      ))}
+                    </span>
+                    <span className="rounded-full border border-emerald-400/35 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.15em] text-emerald-300">
+                      Auto Refresh
+                    </span>
+                  </div>
                 )}
 
                 <div className="hidden md:flex items-center gap-2">
@@ -734,11 +807,19 @@ export default function Page() {
                 </div>
 
                 <button
-                  onClick={() => setAutoPlay((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 dark:border-white/10 bg-slate-100/80 dark:bg-white/[0.06] backdrop-blur-md px-2.5 py-2 font-extrabold text-slate-700 dark:text-white hover:bg-slate-200 dark:hover:bg-white/[0.10] transition text-[var(--fs-sub)]"
+                  onClick={cycleInterval}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] backdrop-blur-md px-2.5 py-2 font-extrabold text-white hover:bg-white/[0.12] transition text-[var(--fs-sub)]"
                 >
-                  {autoPlay ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  {autoPlay ? "Auto (30s)" : "Fixed"}
+                  {slideInterval > 0 ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  {INTERVAL_LABEL[slideInterval]}
+                </button>
+                <button
+                  onClick={cycleTheme}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.07] backdrop-blur-md px-2.5 py-2 font-extrabold text-white hover:bg-white/[0.12] transition text-[var(--fs-sub)]"
+                  title={`Theme: ${THEME_LABEL[kioskTheme]}`}
+                >
+                  <Palette className="h-4 w-4" />
+                  <span className="hidden lg:inline">{THEME_LABEL[kioskTheme]}</span>
                 </button>
               </div>
             </div>
@@ -751,33 +832,108 @@ export default function Page() {
               </div>
             </div>
 
-            <button
-              onClick={() => setIndex((i) => (i - 1 + slides.length) % slides.length)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-800/70 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-white shadow-md transition-colors"
-              aria-label="Previous slide"
-            >
-              <ChevronLeft className="h-6 w-6" />
-            </button>
-
-            <button
-              onClick={() => setIndex((i) => (i + 1) % slides.length)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full flex items-center justify-center bg-white/80 dark:bg-slate-800/70 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-white shadow-md transition-colors"
-              aria-label="Next slide"
-            >
-              <ChevronRight className="h-6 w-6" />
-            </button>
           </div>
         </div>
 
         <style jsx global>{`
+          @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Bebas+Neue&family=DM+Sans:wght@400;600;700&display=swap');
+
+          .kiosk-header { font-family: 'Barlow Condensed', 'Bebas Neue', ui-sans-serif, sans-serif; letter-spacing: 0.04em; }
+          .kiosk-data   { font-family: 'DM Sans', ui-sans-serif, sans-serif; }
+
+          /* ── Theme Variables ── */
+          [data-theme="dark"], :root {
+            --kiosk-bg: #0A0E1A;
+            --kiosk-card: rgba(8,15,30,0.97);
+            --kiosk-border: rgba(255,255,255,0.08);
+            --kiosk-text: #CBD5E1;
+            --kiosk-text-muted: rgba(255,255,255,0.45);
+            --kiosk-row-odd: #0F1629;
+            --kiosk-row-even: #151C35;
+            --kiosk-row-hover: #1E2B45;
+          }
+          [data-theme="light"] {
+            --kiosk-bg: #EEF2F8;
+            --kiosk-card: rgba(255,255,255,0.98);
+            --kiosk-border: rgba(0,0,0,0.10);
+            --kiosk-text: #0F172A;
+            --kiosk-text-muted: rgba(15,23,42,0.55);
+            --kiosk-row-odd: #F8FAFD;
+            --kiosk-row-even: #EEF3FB;
+            --kiosk-row-hover: #E2EAFA;
+          }
+
+          /* Light theme — KPI cards: white bg with colored top border */
+          [data-theme="light"] .kiosk-kpi-blue {
+            background: linear-gradient(160deg,#EFF6FF,#DBEAFE) !important;
+            border-color: #93C5FD !important;
+            box-shadow: 0 0 0 1px #BFDBFE, 0 4px 18px rgba(59,130,246,0.12) !important;
+          }
+          [data-theme="light"] .kiosk-kpi-blue .kiosk-kpi-title { background: #1D4ED8 !important; }
+          [data-theme="light"] .kiosk-kpi-blue .kiosk-kpi-value { color: #1E40AF !important; }
+
+          [data-theme="light"] .kiosk-kpi-emerald {
+            background: linear-gradient(160deg,#ECFDF5,#D1FAE5) !important;
+            border-color: #6EE7B7 !important;
+            box-shadow: 0 0 0 1px #A7F3D0, 0 4px 18px rgba(16,185,129,0.12) !important;
+          }
+          [data-theme="light"] .kiosk-kpi-emerald .kiosk-kpi-title { background: #047857 !important; }
+          [data-theme="light"] .kiosk-kpi-emerald .kiosk-kpi-value { color: #065F46 !important; }
+
+          [data-theme="light"] .kiosk-kpi-purple {
+            background: linear-gradient(160deg,#F5F3FF,#EDE9FE) !important;
+            border-color: #C4B5FD !important;
+            box-shadow: 0 0 0 1px #DDD6FE, 0 4px 18px rgba(139,92,246,0.12) !important;
+          }
+          [data-theme="light"] .kiosk-kpi-purple .kiosk-kpi-title { background: #6D28D9 !important; }
+          [data-theme="light"] .kiosk-kpi-purple .kiosk-kpi-value { color: #5B21B6 !important; }
+
+          [data-theme="light"] .kiosk-kpi-amber {
+            background: linear-gradient(160deg,#FFFBEB,#FEF3C7) !important;
+            border-color: #FCD34D !important;
+            box-shadow: 0 0 0 1px #FDE68A, 0 4px 18px rgba(245,158,11,0.12) !important;
+          }
+          [data-theme="light"] .kiosk-kpi-amber .kiosk-kpi-title { background: #B45309 !important; }
+          [data-theme="light"] .kiosk-kpi-amber .kiosk-kpi-value { color: #92400E !important; }
+
+          /* Light theme — card title text always white (dark bg title bar) */
+          [data-theme="light"] .kiosk-kpi-title { color: #fff !important; }
+          /* Light theme — card subtitle */
+          [data-theme="light"] .kiosk-kpi-sub { opacity: 0.7 !important; }
+          [data-theme="midnight"] {
+            --kiosk-bg: #08081A;
+            --kiosk-card: rgba(8,8,26,0.97);
+            --kiosk-border: rgba(124,58,237,0.22);
+            --kiosk-text: #C5CDD9;
+            --kiosk-text-muted: rgba(197,205,217,0.48);
+            --kiosk-row-odd: #0C0C24;
+            --kiosk-row-even: #10102E;
+            --kiosk-row-hover: #18183C;
+          }
+          [data-theme="ocean"] {
+            --kiosk-bg: #091826;
+            --kiosk-card: rgba(9,24,38,0.97);
+            --kiosk-border: rgba(8,145,178,0.22);
+            --kiosk-text: #DCE8F2;
+            --kiosk-text-muted: rgba(220,232,242,0.48);
+            --kiosk-row-odd: #0B1E2E;
+            --kiosk-row-even: #0E2438;
+            --kiosk-row-hover: #142E48;
+          }
+
+          /* ── Hide Scrollbars Globally ── */
+          .kiosk-noscroll, .kiosk-noscroll * {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+          .kiosk-noscroll::-webkit-scrollbar,
+          .kiosk-noscroll *::-webkit-scrollbar { display: none; }
+
           @keyframes slideIn {
-            0% { opacity: 0; transform: translateY(10px) scale(0.995); }
-            100% { opacity: 1; transform: translateY(0px) scale(1); }
+            0%   { opacity: 0; transform: translateY(10px) scale(0.995); }
+            100% { opacity: 1; transform: translateY(0px)  scale(1); }
           }
-          @keyframes progressFill {
-            from { width: 0%; }
-            to { width: 100%; }
-          }
+          @keyframes progressFill { from { width: 0%; } to { width: 100%; } }
         `}</style>
 
         {showRefreshIndicator && (
