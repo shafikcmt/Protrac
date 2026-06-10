@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import {
   ArrowDownToLine,
@@ -11,21 +10,7 @@ import {
   Shirt,
   PanelTop,
   BadgeCheck,
-  Target,
-  Zap,
-  AlertTriangle,
-  RefreshCw as RefreshCwIcon,
 } from "lucide-react";
-
-type WipTone =
-  | "blue"
-  | "cyan"
-  | "emerald"
-  | "violet"
-  | "amber"
-  | "orange"
-  | "pink"
-  | "slate";
 
 type KpiData = {
   target: number;
@@ -50,20 +35,17 @@ type WipData = {
 const DEFAULT_PARTS = ["Front", "Back", "Sleeve", "Collar", "Hood"];
 
 const normalizeKey = (s: unknown) =>
-  String(s ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, "");
+  String(s ?? "").toLowerCase().replace(/\s+/g, "");
 
 function useCountUp(value: number, durationMs = 900) {
   const [v, setV] = React.useState(0);
   React.useEffect(() => {
     let raf = 0;
     const start = performance.now();
-    const to = value;
     const tick = (t: number) => {
       const p = Math.min(1, (t - start) / durationMs);
       const eased = 1 - Math.pow(1 - p, 3);
-      setV(to * eased);
+      setV(value * eased);
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -72,273 +54,173 @@ function useCountUp(value: number, durationMs = 900) {
   return v;
 }
 
-const TONE_STYLES: Record<
-  WipTone,
-  {
-    rail: string;
-    fill: string;
-    chip: string;
-    chipActive: string;
-    iconWrap: string;
-    glow: string;
-    accent: string;
-  }
-> = {
-  blue: {
-    rail: "bg-blue-500/10 border-blue-300/10",
-    fill: "bg-[linear-gradient(90deg,#60a5fa_0%,#3b82f6_100%)]",
-    chip: "bg-blue-400/15 text-blue-200 border-blue-300/25",
-    chipActive: "bg-blue-500/75 text-white border-blue-400/60",
-    iconWrap:
-      "bg-[linear-gradient(135deg,rgba(96,165,250,0.28),rgba(37,99,235,0.22))] text-blue-200 border-blue-300/25",
-    glow: "shadow-[0_0_18px_rgba(59,130,246,0.35)]",
-    accent: "border-blue-500/60",
-  },
-  cyan: {
-    rail: "bg-cyan-500/10 border-cyan-300/10",
-    fill: "bg-[linear-gradient(90deg,#67e8f9_0%,#06b6d4_100%)]",
-    chip: "bg-cyan-400/15 text-cyan-200 border-cyan-300/25",
-    chipActive: "bg-cyan-500/75 text-white border-cyan-400/60",
-    iconWrap:
-      "bg-[linear-gradient(135deg,rgba(103,232,249,0.26),rgba(8,145,178,0.22))] text-cyan-200 border-cyan-300/25",
-    glow: "shadow-[0_0_18px_rgba(34,211,238,0.35)]",
-    accent: "border-cyan-500/60",
-  },
-  emerald: {
-    rail: "bg-emerald-500/10 border-emerald-300/10",
-    fill: "bg-[linear-gradient(90deg,#6ee7b7_0%,#10b981_100%)]",
-    chip: "bg-emerald-400/15 text-emerald-200 border-emerald-300/25",
-    chipActive: "bg-emerald-500/75 text-white border-emerald-400/60",
-    iconWrap:
-      "bg-[linear-gradient(135deg,rgba(110,231,183,0.26),rgba(5,150,105,0.22))] text-emerald-200 border-emerald-300/25",
-    glow: "shadow-[0_0_18px_rgba(16,185,129,0.35)]",
-    accent: "border-emerald-500/60",
-  },
-  violet: {
-    rail: "bg-violet-500/10 border-violet-300/10",
-    fill: "bg-[linear-gradient(90deg,#a78bfa_0%,#7c3aed_100%)]",
-    chip: "bg-violet-400/15 text-violet-200 border-violet-300/25",
-    chipActive: "bg-violet-500/75 text-white border-violet-400/60",
-    iconWrap:
-      "bg-[linear-gradient(135deg,rgba(167,139,250,0.26),rgba(109,40,217,0.22))] text-violet-200 border-violet-300/25",
-    glow: "shadow-[0_0_18px_rgba(139,92,246,0.35)]",
-    accent: "border-violet-500/60",
-  },
-  amber: {
-    rail: "bg-amber-500/10 border-amber-300/10",
-    fill: "bg-[linear-gradient(90deg,#fde68a_0%,#f59e0b_100%)]",
-    chip: "bg-amber-400/15 text-amber-200 border-amber-300/25",
-    chipActive: "bg-amber-500/75 text-white border-amber-400/60",
-    iconWrap:
-      "bg-[linear-gradient(135deg,rgba(253,230,138,0.28),rgba(217,119,6,0.22))] text-amber-200 border-amber-300/25",
-    glow: "shadow-[0_0_18px_rgba(245,158,11,0.35)]",
-    accent: "border-amber-500/60",
-  },
-  orange: {
-    rail: "bg-orange-500/10 border-orange-300/10",
-    fill: "bg-[linear-gradient(90deg,#fdba74_0%,#f97316_100%)]",
-    chip: "bg-orange-400/15 text-orange-200 border-orange-300/25",
-    chipActive: "bg-orange-500/75 text-white border-orange-400/60",
-    iconWrap:
-      "bg-[linear-gradient(135deg,rgba(253,186,116,0.28),rgba(234,88,12,0.22))] text-orange-200 border-orange-300/25",
-    glow: "shadow-[0_0_18px_rgba(249,115,22,0.35)]",
-    accent: "border-orange-500/60",
-  },
-  pink: {
-    rail: "bg-pink-500/10 border-pink-300/10",
-    fill: "bg-[linear-gradient(90deg,#f9a8d4_0%,#ec4899_100%)]",
-    chip: "bg-pink-400/15 text-pink-200 border-pink-300/25",
-    chipActive: "bg-pink-500/75 text-white border-pink-400/60",
-    iconWrap:
-      "bg-[linear-gradient(135deg,rgba(249,168,212,0.28),rgba(219,39,119,0.22))] text-pink-200 border-pink-300/25",
-    glow: "shadow-[0_0_18px_rgba(236,72,153,0.35)]",
-    accent: "border-pink-500/60",
-  },
-  slate: {
-    rail: "bg-slate-500/10 border-slate-300/10",
-    fill: "bg-[linear-gradient(90deg,#94a3b8_0%,#64748b_100%)]",
-    chip: "bg-slate-400/15 text-slate-300 border-slate-300/25",
-    chipActive: "bg-slate-500/70 text-white border-slate-400/60",
-    iconWrap:
-      "bg-[linear-gradient(135deg,rgba(148,163,184,0.22),rgba(71,85,105,0.22))] text-slate-300 border-slate-300/25",
-    glow: "shadow-[0_0_18px_rgba(100,116,139,0.25)]",
-    accent: "border-slate-500/40",
-  },
-};
-
-/* ── Styling constants ── */
-const flatKpiBase = "relative rounded-[20px] overflow-hidden border h-full";
-
-const flatKpiTitle =
-  "kiosk-kpi-title px-4 py-2.5 text-center text-[14px] font-black uppercase leading-none border-b border-white/10 text-white kiosk-header tracking-[0.15em]";
-
-const flatKpiValue =
-  "kiosk-kpi-value px-4 pt-3 pb-0 text-center text-[46px] md:text-[54px] xl:text-[62px] leading-none font-black tabular-nums kiosk-data";
-
-const flatKpiSub = "kiosk-kpi-sub pt-2 pb-3 text-center text-[14px] font-semibold opacity-55 kiosk-data";
-
-const thBase =
-  "relative overflow-hidden text-white font-black uppercase tracking-[0.1em] [text-shadow:0_1px_6px_rgba(0,0,0,0.28)]";
-
-const thHours    = "bg-[#1E3A8A] text-left";
-const thTarget   = "bg-[#065F46] text-right";
-const thCumTarget= "bg-[#6D28D9] text-right";
-const thActual   = "bg-[#92400E] text-right";
-const thCumActual= "bg-[#0E4E6B] text-right";
-
-const cellBase = "border-b border-white/8 font-bold";
-
-const tdHours    = "bg-[linear-gradient(180deg,rgba(30,58,138,0.55),rgba(24,46,110,0.55))]";
-const tdTarget   = "bg-[linear-gradient(180deg,rgba(6,95,70,0.45),rgba(5,76,57,0.45))]";
-const tdCumTarget= "bg-[linear-gradient(180deg,rgba(109,40,217,0.38),rgba(88,32,174,0.38))]";
-const tdActual   = "bg-[linear-gradient(180deg,rgba(146,64,14,0.45),rgba(120,53,10,0.45))]";
-const tdCumActual= "bg-[linear-gradient(180deg,rgba(14,78,107,0.45),rgba(11,63,87,0.45))]";
-
-const tdTotalHours    = "bg-[#1A2E5E]";
-const tdTotalTarget   = "bg-[#064E3B]";
-const tdTotalCumTarget= "bg-[#5B21B6]";
-const tdTotalActual   = "bg-[#78350F]";
-const tdTotalCumActual= "bg-[#0C4A6E]";
-
-function FlatInfoKpiCard({
-  title,
-  value,
-  subtitle,
-  cardClass,
-  titleClass,
-  valueClass,
-  subClass,
-  icon,
-}: {
-  title: string;
-  value: React.ReactNode;
-  subtitle?: React.ReactNode;
-  cardClass: string;
-  titleClass?: string;
-  valueClass?: string;
-  subClass?: string;
-  icon?: React.ReactNode;
-}) {
+/* Shared column widths across all three sub-tables (header / body / footer) */
+const COL_WIDTHS = ["120px", "80px", "90px", "80px", "80px"] as const;
+function TableColGroup() {
   return (
-    <Card className={cn(flatKpiBase, cardClass)}>
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),transparent_45%)] pointer-events-none" />
-      {icon && (
-        <div className="absolute top-4 right-4 opacity-8 w-14 h-14 pointer-events-none">{icon}</div>
-      )}
-      <div className={cn(flatKpiTitle, titleClass)}>{title}</div>
-      <CardContent className="p-0 min-h-[112px] flex flex-col items-center justify-center">
-        <div className={cn(flatKpiValue, valueClass)}>{value}</div>
-        {subtitle ? <div className={cn(flatKpiSub, subClass)}>{subtitle}</div> : null}
-      </CardContent>
-    </Card>
+    <colgroup>
+      {COL_WIDTHS.map((w, i) => <col key={i} style={{ width: w }} />)}
+    </colgroup>
   );
 }
 
+/* ─────────────────────────────────────────────
+   KPI CARD — solid filled background
+   ───────────────────────────────────────────── */
+function KpiCard({
+  label,
+  bgColor,
+  textColor = "#ffffff",
+  subTextColor,
+  children,
+}: {
+  label: string;
+  bgColor: string;
+  textColor?: string;
+  subTextColor?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 12,
+        padding: "14px 18px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        overflow: "hidden",
+        background: bgColor,
+        boxSizing: "border-box",
+        height: "100%",
+      }}
+    >
+      <div
+        className="kiosk-header"
+        style={{
+          fontSize: "1.1rem",
+          letterSpacing: "0.15em",
+          color: subTextColor ?? textColor,
+          opacity: 0.9,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          marginBottom: 6,
+          lineHeight: 1,
+        }}
+      >
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   8-CHUNK SEGMENTED WIP BAR
+   ───────────────────────────────────────────── */
+function WipSegBar({
+  value,
+  max,
+  fillColor,
+  glowColor,
+}: {
+  value: number;
+  max: number;
+  fillColor: string;
+  glowColor: string;
+}) {
+  const SEGS = 8;
+  const filled = Math.round(Math.max(0, Math.min(1, max > 0 ? value / max : 0)) * SEGS);
+  return (
+    <div className="flex flex-1 items-center gap-[3px] min-w-0">
+      {Array.from({ length: SEGS }).map((_, i) => (
+        <div
+          key={i}
+          className="flex-1 rounded-[2px] transition-all duration-500"
+          style={{
+            height: 16,
+            ...(i < filled
+              ? { background: fillColor, boxShadow: `0 0 6px ${glowColor}` }
+              : { background: "var(--kiosk-seg-empty, rgba(255,255,255,0.07))" }),
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   WIP ROW — icon · label · segmented bar · value
+   grow=true → flex:1 to share available height
+   ───────────────────────────────────────────── */
 function WipRow({
   label,
   value,
   max,
-  tone = "cyan",
+  fillColor,
+  glowColor,
   icon,
-  showMeta = true,
+  grow = false,
 }: {
   label: string;
   value: number;
   max: number;
-  tone?: WipTone;
+  fillColor: string;
+  glowColor: string;
   icon?: React.ReactNode;
-  compact?: boolean;
-  showMeta?: boolean;
+  grow?: boolean;
 }) {
-  const pct = Math.max(0, Math.min(100, max > 0 ? (value / max) * 100 : 0));
-  const toneStyle = TONE_STYLES[tone];
-  const isActive = value > 0;
-
+  const active = value > 0;
   return (
     <div
-      className={cn(
-        "relative overflow-hidden rounded-xl border transition-all duration-300",
-        isActive
-          ? cn("border-white/12 bg-slate-800/45", toneStyle.accent)
-          : "border-white/6 bg-slate-800/20",
-        "px-3 py-1.5",
-        !isActive && "opacity-40"
-      )}
+      className={cn("flex items-center gap-2 rounded-xl px-2.5", grow ? "flex-1" : "py-2")}
       style={{
-        backdropFilter: isActive ? "blur(8px)" : undefined,
-        borderLeft: isActive ? undefined : undefined,
+        minHeight: grow ? 44 : undefined,
+        background: active
+          ? "var(--kiosk-wip-row-active, rgba(255,255,255,0.04))"
+          : "var(--kiosk-wip-row-idle, rgba(255,255,255,0.018))",
+        border: "1px solid var(--kiosk-wip-border, rgba(255,255,255,0.06))",
+        borderLeft: `3px solid ${active ? fillColor : "var(--kiosk-row-border, rgba(255,255,255,0.1))"}`,
       }}
     >
-      {/* Left accent bar */}
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-y-1.5 left-0 w-[3px] rounded-r-full transition-opacity",
-          toneStyle.fill,
-          isActive ? "opacity-100" : "opacity-20"
-        )}
-      />
-
-      <div className="grid items-center grid-cols-[auto_minmax(0,1fr)_64px] gap-2 pl-2">
-        {/* Icon + label */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div
-            className={cn(
-              "flex shrink-0 items-center justify-center rounded-[12px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_4px_10px_rgba(0,0,0,0.18)]",
-              toneStyle.iconWrap,
-              "h-7 w-7",
-              !isActive && "opacity-60"
-            )}
-          >
-            {icon}
-          </div>
-          <div className="min-w-0">
-            <div className="truncate font-bold tracking-[0.01em] text-white leading-none text-[14px]">
-              {label}
-            </div>
-            {showMeta ? (
-              <div className="mt-0.5 text-[8px] font-black uppercase tracking-[0.13em] text-white/38 leading-none">
-                {pct.toFixed(0)}% utilized
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Progress bar — thicker */}
-        <div className="min-w-0">
-          <div
-            className={cn(
-              "relative overflow-hidden rounded-full border",
-              toneStyle.rail,
-              "h-3.5"
-            )}
-          >
-            <div
-              className={cn(
-                "h-full rounded-full transition-[width] duration-700",
-                toneStyle.fill,
-                isActive && toneStyle.glow
-              )}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Value badge */}
+      {icon && (
         <div
-          className={cn(
-            "rounded-[12px] border text-center tabular-nums font-black leading-none",
-            "shadow-[inset_0_1px_0_rgba(255,255,255,0.10),0_4px_10px_rgba(0,0,0,0.14)]",
-            isActive ? toneStyle.chipActive : toneStyle.chip,
-            "px-2 py-1 text-[18px]"
-          )}
+          className="shrink-0"
+          style={{ color: active ? fillColor : "var(--kiosk-wip-label-idle, rgba(255,255,255,0.2))" }}
         >
-          {value.toLocaleString()}
+          {icon}
         </div>
+      )}
+      <div
+        className="shrink-0 kiosk-data truncate"
+        style={{
+          width: 90,
+          minWidth: 90,
+          fontSize: "1rem",
+          fontWeight: 700,
+          color: active
+            ? "var(--kiosk-wip-label-active, rgba(255,255,255,0.85))"
+            : "var(--kiosk-wip-label-idle, rgba(255,255,255,0.3))",
+        }}
+      >
+        {label}
+      </div>
+      <WipSegBar value={value} max={max} fillColor={fillColor} glowColor={glowColor} />
+      <div
+        className="shrink-0 text-right tabular-nums kiosk-data"
+        style={{
+          minWidth: 56,
+          fontSize: "1.15rem",
+          fontWeight: 900,
+          color: active ? fillColor : "var(--kiosk-wip-label-idle, rgba(255,255,255,0.2))",
+        }}
+      >
+        {value.toLocaleString()}
       </div>
     </div>
   );
 }
 
+/* ═══════════════════════════════════════════════════════════ */
 export default function SlideOne({
   kpi,
   planVsActualRows,
@@ -349,11 +231,9 @@ export default function SlideOne({
   wip: WipData;
 }) {
   const efficiency = useCountUp(kpi.efficiency, 700);
-  const dhu        = useCountUp(kpi.dhu, 700);
-  const reworkQty  = useCountUp(kpi.reworkQty, 700);
-  const reworkPct  = useCountUp(kpi.reworkPct, 700);
-
-  const hourCount = planVsActualRows.length;
+  const dhu        = useCountUp(kpi.dhu,        700);
+  const reworkQty  = useCountUp(kpi.reworkQty,  700);
+  const reworkPct  = useCountUp(kpi.reworkPct,  700);
 
   const computed = React.useMemo(() => {
     let running = 0;
@@ -361,7 +241,7 @@ export default function SlideOne({
       running += r.actual ?? 0;
       return { ...r, achievement: running };
     });
-    const totalTarget = all.reduce((s, x) => s + (x.plan ?? 0), 0);
+    const totalTarget = all.reduce((s, x) => s + (x.plan   ?? 0), 0);
     const totalActual = all.reduce((s, x) => s + (x.actual ?? 0), 0);
     return { all, totalTarget, totalActual };
   }, [planVsActualRows]);
@@ -393,310 +273,622 @@ export default function SlideOne({
     );
   }, [wip.partWipRows]);
 
-  const isCompactWip = visibleWipRows.length >= 4 || hourCount >= 8;
-
-  const wipMeta: Record<string, { tone: WipTone; icon: React.ReactNode }> = {
-    front:  { tone: "orange", icon: <Shirt    className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} /> },
-    back:   { tone: "cyan",   icon: <PanelTop className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} /> },
-    sleeve: { tone: "blue",   icon: <Scissors className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} /> },
-    collar: { tone: "amber",  icon: <BadgeCheck className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} /> },
-    hood:   { tone: "violet", icon: <Layers3  className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} /> },
+  const wipParts: Record<string, { fill: string; glow: string; icon: React.ReactNode }> = {
+    front:  { fill: "#F97316", glow: "rgba(249,115,22,0.7)",   icon: <Shirt      className="h-[15px] w-[15px]" /> },
+    back:   { fill: "#06B6D4", glow: "rgba(6,182,212,0.7)",    icon: <PanelTop   className="h-[15px] w-[15px]" /> },
+    sleeve: { fill: "#60A5FA", glow: "rgba(96,165,250,0.7)",   icon: <Scissors   className="h-[15px] w-[15px]" /> },
+    collar: { fill: "#F59E0B", glow: "rgba(245,158,11,0.7)",   icon: <BadgeCheck className="h-[15px] w-[15px]" /> },
+    hood:   { fill: "#A78BFA", glow: "rgba(167,139,250,0.7)",  icon: <Layers3    className="h-[15px] w-[15px]" /> },
   };
 
-  const thPad =
-    hourCount >= 10 ? "px-3 py-2 text-[14px]" :
-    hourCount >= 8  ? "px-3 py-2.5 text-[15px]" :
-                      "px-4 py-3 text-[16px]";
+  /* KPI number style */
+  const numStyle: React.CSSProperties = {
+    fontSize: "clamp(3rem, 5vw, 4.5rem)",
+    fontWeight: 900,
+    lineHeight: 1,
+    fontVariantNumeric: "tabular-nums",
+  };
 
-  const tdPad =
-    hourCount >= 10 ? "px-3 py-1.5" :
-    hourCount >= 8  ? "px-3 py-2" :
-                      "px-4 py-2.5";
+  /* Sub-text style inside KPI cards */
+  const subStyle: React.CSSProperties = {
+    fontSize: "1rem",
+    fontWeight: 500,
+    opacity: 0.85,
+    marginTop: 4,
+  };
 
-  const tdNum =
-    hourCount >= 10 ? "text-[18px] font-black" :
-    hourCount >= 8  ? "text-[20px] font-black" :
-                      "text-[22px] font-black";
+  /* Panel card style — uses CSS variables for light/dark theming */
+  const panelStyle: React.CSSProperties = {
+    background: "var(--kiosk-panel-bg, rgba(255,255,255,0.025))",
+    border: "1px solid var(--kiosk-panel-border, rgba(255,255,255,0.07))",
+    borderRadius: 14,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    minHeight: 0,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+  };
 
   return (
-    <div className="h-full w-full p-2 text-white">
-      <div className="grid h-full grid-rows-[168px_minmax(0,1fr)] gap-2">
+    /*
+     * ROOT — height:100%, flex col, gap:8, padding:8,
+     *        overflow:hidden, box-sizing:border-box
+     * color uses --kiosk-text so it responds to all themes
+     */
+    <div
+      className="w-full"
+      style={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: 8,
+        overflow: "hidden",
+        boxSizing: "border-box",
+        fontFamily: "'Inter','DM Sans',system-ui,sans-serif",
+        color: "var(--kiosk-text, #ffffff)",
+      }}
+    >
 
-        {/* ── KPI cards row ── */}
-        <div className="grid h-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-          {/* Target / Actual — blue */}
-          <FlatInfoKpiCard
-            title="Target / Actual"
-            value={
-              <div className="flex items-center justify-center gap-3">
-                <span className="text-white">{Math.round(kpi.target).toLocaleString()}</span>
-                <span className="text-white/30 text-[30px] leading-none">/</span>
-                <span className="text-white">{Math.round(kpi.actual).toLocaleString()}</span>
-              </div>
-            }
-            subtitle={`A: ${Math.round(kpi.actual).toLocaleString()} • T: ${Math.round(kpi.target).toLocaleString()}`}
-            icon={<Target className="w-full h-full" />}
-            cardClass="kiosk-kpi-blue border-blue-500/30 bg-gradient-to-br from-[#0A1628] to-[#060E1A] shadow-[0_0_32px_rgba(59,130,246,0.22),inset_0_1px_0_rgba(59,130,246,0.12)]"
-            titleClass="bg-[#1E3A8A]"
-            valueClass="text-white"
-            subClass="text-white/55"
-          />
+      {/* ── KPI CARDS ROW ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 8,
+          flexShrink: 0,
+          height: 150,
+        }}
+      >
 
-          {/* Efficiency — emerald */}
-          <FlatInfoKpiCard
-            title="Efficiency"
-            value={<span className="text-emerald-300">{efficiency.toFixed(1)}%</span>}
-            subtitle="Today"
-            icon={<Zap className="w-full h-full" />}
-            cardClass="kiosk-kpi-emerald border-emerald-500/30 bg-gradient-to-br from-[#071A10] to-[#040E09] shadow-[0_0_32px_rgba(16,185,129,0.22),inset_0_1px_0_rgba(16,185,129,0.12)]"
-            titleClass="bg-[#065F46]"
-            valueClass="text-emerald-300"
-            subClass="text-emerald-300/55"
-          />
+        {/* Card 1 — TARGET / ACTUAL */}
+        <KpiCard
+          label="TARGET / ACTUAL"
+          bgColor="#1e293b"
+          textColor="#ffffff"
+          subTextColor="rgba(255,255,255,0.7)"
+        >
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span className="kiosk-data" style={{ ...numStyle, color: "#ffffff" }}>
+              {Math.round(kpi.target).toLocaleString()}
+            </span>
+            <span
+              className="kiosk-data"
+              style={{
+                fontSize: "clamp(1.5rem, 2.5vw, 2.2rem)",
+                fontWeight: 900,
+                lineHeight: 1,
+                color: "rgba(255,255,255,0.3)",
+              }}
+            >
+              /
+            </span>
+            <span className="kiosk-data" style={{ ...numStyle, color: "#00E5FF" }}>
+              {Math.round(kpi.actual).toLocaleString()}
+            </span>
+          </div>
+          <div style={{ ...subStyle, color: "rgba(255,255,255,0.7)" }}>TODAY</div>
+        </KpiCard>
 
-          {/* DHU — purple */}
-          <FlatInfoKpiCard
-            title="DHU"
-            value={<span className="text-purple-300">{dhu.toFixed(1)}%</span>}
-            subtitle="Today"
-            icon={<AlertTriangle className="w-full h-full" />}
-            cardClass="kiosk-kpi-purple border-purple-500/30 bg-gradient-to-br from-[#130A22] to-[#0A0614] shadow-[0_0_32px_rgba(168,85,247,0.22),inset_0_1px_0_rgba(168,85,247,0.12)]"
-            titleClass="bg-[#6D28D9]"
-            valueClass="text-purple-300"
-            subClass="text-purple-300/55"
-          />
+        {/* Card 2 — EFFICIENCY */}
+        <KpiCard
+          label="EFFICIENCY"
+          bgColor="#16a34a"
+          textColor="#ffffff"
+          subTextColor="rgba(255,255,255,0.85)"
+        >
+          <span className="kiosk-data" style={{ ...numStyle, color: "#ffffff" }}>
+            {efficiency.toFixed(1)}%
+          </span>
+          <div style={{ ...subStyle, color: "rgba(255,255,255,0.8)" }}>
+            A: {Math.round(kpi.actual)} · T: {Math.round(kpi.target)}
+          </div>
+        </KpiCard>
 
-          {/* Rework — amber */}
-          <FlatInfoKpiCard
-            title="Rework Qty"
-            value={<span className="text-amber-300">{Math.round(reworkQty).toLocaleString()}</span>}
-            subtitle={`${reworkPct.toFixed(1)}% • Today`}
-            icon={<RefreshCwIcon className="w-full h-full" />}
-            cardClass="kiosk-kpi-amber border-amber-500/30 bg-gradient-to-br from-[#1A0E04] to-[#0D0702] shadow-[0_0_32px_rgba(245,158,11,0.22),inset_0_1px_0_rgba(245,158,11,0.12)]"
-            titleClass="bg-[#92400E]"
-            valueClass="text-amber-300"
-            subClass="text-amber-300/55"
-          />
-        </div>
+        {/* Card 3 — DHU */}
+        <KpiCard
+          label="DHU"
+          bgColor="#9333ea"
+          textColor="#ffffff"
+          subTextColor="rgba(255,255,255,0.85)"
+        >
+          <span className="kiosk-data" style={{ ...numStyle, color: "#ffffff" }}>
+            {dhu.toFixed(1)}%
+          </span>
+          <div style={{ ...subStyle, color: "rgba(255,255,255,0.8)" }}>
+            Defects per 100 units
+          </div>
+        </KpiCard>
 
-        {/* ── Bottom row ── */}
-        <div className="grid min-h-0 grid-cols-1 gap-2 xl:grid-cols-[1.15fr_0.85fr]">
+        {/* Card 4 — REWORK QTY */}
+        <KpiCard
+          label="REWORK QTY"
+          bgColor="#d97706"
+          textColor="#ffffff"
+          subTextColor="rgba(255,255,255,0.85)"
+        >
+          <span className="kiosk-data" style={{ ...numStyle, color: "#ffffff" }}>
+            {Math.round(reworkQty).toLocaleString()}
+          </span>
+          <div style={{ ...subStyle, color: "rgba(255,255,255,0.8)" }}>
+            {reworkPct.toFixed(1)}% of output
+          </div>
+        </KpiCard>
+      </div>
 
-          {/* Target vs Actual */}
-          <Card
-            className="h-full min-h-0 flex flex-col overflow-hidden rounded-[22px] border border-white/10 shadow-[0_14px_40px_rgba(0,0,0,0.5)]"
-            style={{
-              background: "var(--kiosk-card, rgba(8,15,30,0.97))",
-              backdropFilter: "blur(10px)",
-            }}
+      {/* ── BOTTOM SECTION ── */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "grid",
+          gridTemplateColumns: "57fr 43fr",
+          gap: 16,
+        }}
+      >
+
+        {/* ── LEFT PANEL: TARGET VS ACTUAL ── */}
+        <div style={panelStyle}>
+
+          {/* Panel header */}
+          <div
+            className="shrink-0 flex items-center justify-between px-4 py-2 border-b"
+            style={{ borderColor: "var(--kiosk-panel-border, rgba(255,255,255,0.07))" }}
           >
-            <CardHeader className="relative pb-0 pt-2 shrink-0">
-              <CardTitle className="kiosk-header text-white font-bold tracking-tight text-[32px] xl:text-[38px] leading-none drop-shadow-[0_3px_14px_rgba(0,0,0,0.5)]">
-                Target vs Actual
-              </CardTitle>
-            </CardHeader>
-
-            <CardContent className="pt-1 pb-2 flex-1 min-h-0">
-              <div
-                className="h-full min-h-0 overflow-hidden rounded-[20px] border border-white/10 flex flex-col"
-                style={{ background: "linear-gradient(180deg, #060E1C, #040A14)" }}
+            <h2
+              className="kiosk-header font-extrabold uppercase tracking-[0.12em]"
+              style={{ fontSize: 18, color: "var(--kiosk-text, #ffffff)" }}
+            >
+              Target vs Actual
+            </h2>
+            <div className="flex gap-1.5 kiosk-data font-black tabular-nums" style={{ fontSize: 11 }}>
+              <span
+                className="rounded-full px-2.5 py-0.5"
+                style={{
+                  background: "rgba(30,58,138,0.55)",
+                  color: "#93C5FD",
+                  border: "1px solid rgba(59,130,246,0.3)",
+                }}
               >
-                {/* Colored top stripe */}
-                <div
-                  className="h-[3px] w-full shrink-0"
-                  style={{
-                    background:
-                      "linear-gradient(90deg, #1E3A8A 0%, #065F46 25%, #6D28D9 50%, #92400E 75%, #0E4E6B 100%)",
-                  }}
-                />
+                {computed.totalTarget} TGT
+              </span>
+              <span
+                className="rounded-full px-2.5 py-0.5"
+                style={{
+                  background: "rgba(5,46,22,0.55)",
+                  color: "#6EE7B7",
+                  border: "1px solid rgba(16,185,129,0.3)",
+                }}
+              >
+                {computed.totalActual} ACT
+              </span>
+            </div>
+          </div>
 
-                {/* Sticky header */}
-                <div className="shrink-0">
-                  <table className="w-full table-fixed border-collapse text-white">
-                    <thead>
-                      <tr>
-                        <th className={cn(thBase, thHours,     thPad)}>Hours</th>
-                        <th className={cn(thBase, thTarget,    thPad)}>Target</th>
-                        <th className={cn(thBase, thCumTarget, thPad)}>Cum Target</th>
-                        <th className={cn(thBase, thActual,    thPad)}>Actual</th>
-                        <th className={cn(thBase, thCumActual, thPad)}>Cum Actual</th>
-                      </tr>
-                    </thead>
-                  </table>
-                </div>
+          {/* Rainbow stripe */}
+          <div
+            className="h-[2px] w-full shrink-0"
+            style={{
+              background:
+                "linear-gradient(90deg,#1E3A8A 0%,#065F46 25%,#6D28D9 50%,#92400E 75%,#0E4E6B 100%)",
+            }}
+          />
 
-                {/* Scrollable body */}
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <table className="w-full table-fixed border-collapse" style={{ color: "var(--kiosk-text, #CBD5E1)" }}>
-                    <tbody>
-                      {tableRows.map((r, idx) => {
-                        const ok = (r.actual ?? 0) >= (r.plan ?? 0);
-                        const cum = computed.all.find((x) => x.serial === r.serial)?.achievement ?? 0;
-                        const bg = idx % 2 === 0 ? "var(--kiosk-row-odd, #0F1629)" : "var(--kiosk-row-even, #151C35)";
+          {/* Sticky column headers */}
+          <div className="shrink-0">
+            <table className="w-full table-fixed border-collapse">
+              <TableColGroup />
+              <thead>
+                <tr style={{ height: 42 }}>
+                  <th
+                    className="text-left uppercase px-3 border-r"
+                    style={{
+                      fontSize: "0.95rem",
+                      fontWeight: 800,
+                      color: "#ffffff",
+                      background: "#1E3A8A",
+                      borderColor: "rgba(255,255,255,0.1)",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    Hour
+                  </th>
+                  <th
+                    className="text-right uppercase px-3 border-r"
+                    style={{
+                      fontSize: "0.95rem",
+                      fontWeight: 800,
+                      color: "#ffffff",
+                      background: "#065F46",
+                      borderColor: "rgba(255,255,255,0.1)",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    Target
+                  </th>
+                  <th
+                    className="text-right uppercase px-3 border-r"
+                    style={{
+                      fontSize: "0.95rem",
+                      fontWeight: 800,
+                      color: "#ffffff",
+                      background: "#6D28D9",
+                      borderColor: "rgba(255,255,255,0.1)",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    Cum Tgt
+                  </th>
+                  <th
+                    className="text-right uppercase px-3 border-r"
+                    style={{
+                      fontSize: "0.95rem",
+                      fontWeight: 800,
+                      color: "#ffffff",
+                      background: "#92400E",
+                      borderColor: "rgba(255,255,255,0.1)",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    Actual
+                  </th>
+                  <th
+                    className="text-right uppercase px-3"
+                    style={{
+                      fontSize: "0.95rem",
+                      fontWeight: 800,
+                      color: "#ffffff",
+                      background: "#0E4E6B",
+                      letterSpacing: "0.12em",
+                    }}
+                  >
+                    Cum Act
+                  </th>
+                </tr>
+              </thead>
+            </table>
+          </div>
 
-                        return (
-                          <tr
-                            key={r.serial}
-                            className="transition-colors duration-200"
-                            style={{ background: bg }}
-                            onMouseEnter={(e) => {
-                              (e.currentTarget as HTMLElement).style.background =
-                                "var(--kiosk-row-hover, #1E2B45)";
-                            }}
-                            onMouseLeave={(e) => {
-                              (e.currentTarget as HTMLElement).style.background = bg;
+          {/*
+           * Body — height:100% on the <table> distributes available flex space
+           * evenly across tbody rows, eliminating dead space below last row.
+           */}
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+            <table
+              className="w-full table-fixed border-collapse kiosk-data"
+              style={{ height: "100%", color: "var(--kiosk-text, #CBD5E1)" }}
+            >
+              <TableColGroup />
+              <tbody>
+                {tableRows.map((r, idx) => {
+                  const ok  = (r.actual ?? 0) >= (r.plan ?? 0);
+                  const cum = computed.all.find((x) => x.serial === r.serial)?.achievement ?? 0;
+                  const bg  = idx % 2 === 0
+                    ? "var(--kiosk-row-odd, #0B1020)"
+                    : "var(--kiosk-row-even, #0F1629)";
+                  return (
+                    <tr
+                      key={r.serial}
+                      className="transition-colors duration-150"
+                      style={{ background: bg }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background =
+                          "var(--kiosk-row-hover, #1A2440)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = bg;
+                      }}
+                    >
+                      {/* Hour */}
+                      <td
+                        className="border-b border-r px-3"
+                        style={{
+                          height: 48,
+                          borderColor: "var(--kiosk-row-border, rgba(255,255,255,0.05))",
+                          background: "rgba(30,58,138,0.28)",
+                          borderLeft: "3px solid rgba(59,130,246,0.45)",
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="flex shrink-0 items-center justify-center rounded-full font-black"
+                            style={{
+                              height: 26,
+                              width: 26,
+                              minWidth: 26,
+                              fontSize: 12,
+                              color: "#ffffff",
+                              background: "rgba(59,130,246,0.22)",
+                              border: "1px solid rgba(59,130,246,0.38)",
                             }}
                           >
-                            <td className={cn(cellBase, tdHours, tdPad)}>
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/10 text-[13px] font-black text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.10)]">
-                                  {r.serial}
-                                </div>
-                                <span className="text-[15px] font-bold tracking-[0.01em] text-white kiosk-data">
-                                  Hour {r.serial}
-                                </span>
-                              </div>
-                            </td>
-                            <td className={cn(cellBase, tdTarget,    tdPad, "text-right")}>
-                              <span className={cn(tdNum, "tabular-nums text-white kiosk-data")}>{r.plan}</span>
-                            </td>
-                            <td className={cn(cellBase, tdCumTarget, tdPad, "text-right")}>
-                              <span className={cn(tdNum, "tabular-nums text-white kiosk-data")}>{r.cumTarget}</span>
-                            </td>
-                            <td className={cn(cellBase, tdActual, tdPad, "text-right")}>
-                              <div className="flex justify-end">
-                                <span
-                                  className={cn(
-                                    "inline-flex min-w-[72px] justify-center rounded-full border px-3 py-1",
-                                    "text-[18px] font-black leading-none tabular-nums kiosk-data",
-                                    ok
-                                      ? "border-emerald-500/35 bg-emerald-500/22 text-emerald-300"
-                                      : "border-rose-500/35 bg-rose-500/22 text-rose-300"
-                                  )}
-                                >
-                                  {r.actual}
-                                </span>
-                              </div>
-                            </td>
-                            <td className={cn(cellBase, tdCumActual, tdPad, "text-right")}>
-                              <span className={cn(tdNum, "tabular-nums text-white kiosk-data")}>{cum}</span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Totals footer */}
-                <div className="shrink-0 border-t-2 border-white/15">
-                  <table className="w-full table-fixed border-collapse text-white">
-                    <tfoot>
-                      <tr>
-                        <td className={cn(tdTotalHours,     hourCount >= 8 ? "px-3 py-2" : "px-4 py-2.5")}>
-                          <div className="rounded-full border border-white/12 bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/85 w-fit">
-                            Total
+                            {r.serial}
                           </div>
-                        </td>
-                        <td className={cn(tdTotalTarget,    hourCount >= 8 ? "px-3 py-2" : "px-4 py-2.5", "text-right")}>
-                          <span className={cn(tdNum, "tabular-nums kiosk-data")}>{computed.totalTarget}</span>
-                        </td>
-                        <td className={cn(tdTotalCumTarget, hourCount >= 8 ? "px-3 py-2" : "px-4 py-2.5", "text-right")}>
-                          <span className={cn(tdNum, "tabular-nums kiosk-data")}>{computed.totalTarget}</span>
-                        </td>
-                        <td className={cn(tdTotalActual,    hourCount >= 8 ? "px-3 py-2" : "px-4 py-2.5", "text-right")}>
-                          <span className={cn(tdNum, "tabular-nums kiosk-data")}>{computed.totalActual}</span>
-                        </td>
-                        <td className={cn(tdTotalCumActual, hourCount >= 8 ? "px-3 py-2" : "px-4 py-2.5", "text-right")}>
-                          <span className={cn(tdNum, "tabular-nums kiosk-data")}>{computed.totalActual}</span>
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                          <span
+                            className="kiosk-data"
+                            style={{
+                              fontSize: "1.05rem",
+                              fontWeight: 800,
+                              color: "var(--kiosk-text, #ffffff)",
+                            }}
+                          >
+                            H{r.serial}
+                          </span>
+                        </div>
+                      </td>
+                      {/* Target */}
+                      <td
+                        className="border-b border-r text-right px-3 tabular-nums kiosk-data"
+                        style={{
+                          fontSize: "1.15rem",
+                          fontWeight: 800,
+                          color: "var(--kiosk-text, #ffffff)",
+                          borderColor: "var(--kiosk-row-border, rgba(255,255,255,0.05))",
+                          background: "rgba(6,95,70,0.22)",
+                        }}
+                      >
+                        {r.plan}
+                      </td>
+                      {/* Cum Target */}
+                      <td
+                        className="border-b border-r text-right px-3 tabular-nums kiosk-data"
+                        style={{
+                          fontSize: "1.1rem",
+                          fontWeight: 700,
+                          color: "var(--kiosk-text, #ffffff)",
+                          borderColor: "var(--kiosk-row-border, rgba(255,255,255,0.05))",
+                          background: "rgba(109,40,217,0.18)",
+                        }}
+                      >
+                        {r.cumTarget}
+                      </td>
+                      {/* Actual — green/red badge */}
+                      <td
+                        className="border-b border-r text-right px-3"
+                        style={{
+                          borderColor: "var(--kiosk-row-border, rgba(255,255,255,0.05))",
+                          background: "rgba(146,64,14,0.22)",
+                        }}
+                      >
+                        <div className="flex justify-end">
+                          <span
+                            className={cn(
+                              "inline-flex items-center justify-center rounded-full border tabular-nums kiosk-data",
+                              ok ? "kiosk-badge-ok" : "kiosk-badge-fail"
+                            )}
+                            style={{
+                              minWidth: 40,
+                              height: 40,
+                              paddingLeft: 8,
+                              paddingRight: 8,
+                              fontSize: "1.1rem",
+                              fontWeight: 900,
+                              ...(ok
+                                ? {
+                                    borderColor: "rgba(16,185,129,0.38)",
+                                    background: "rgba(16,185,129,0.14)",
+                                    color: "#6EE7B7",
+                                  }
+                                : {
+                                    borderColor: "rgba(239,68,68,0.38)",
+                                    background: "rgba(239,68,68,0.14)",
+                                    color: "#FCA5A5",
+                                  }),
+                            }}
+                          >
+                            {r.actual}
+                          </span>
+                        </div>
+                      </td>
+                      {/* Cum Actual */}
+                      <td
+                        className="border-b text-right px-3 tabular-nums kiosk-data"
+                        style={{
+                          fontSize: "1.15rem",
+                          fontWeight: 800,
+                          color: "var(--kiosk-text, #ffffff)",
+                          borderColor: "var(--kiosk-row-border, rgba(255,255,255,0.05))",
+                          background: "rgba(14,78,107,0.22)",
+                        }}
+                      >
+                        {cum}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-          {/* WIP Summary */}
-          <Card
-            className="h-full min-h-0 flex flex-col overflow-hidden rounded-[22px] border border-white/10 shadow-[0_14px_40px_rgba(0,0,0,0.5)]"
-            style={{
-              background: "var(--kiosk-card, rgba(7,16,30,0.97))",
-              backdropFilter: "blur(10px)",
-            }}
+          {/* Pinned totals footer */}
+          <div
+            className="shrink-0 border-t-2"
+            style={{ borderColor: "var(--kiosk-panel-border, rgba(255,255,255,0.12))" }}
           >
-            <CardHeader className="relative pb-0 pt-2 shrink-0">
-              <div className="flex items-center justify-between">
-                <CardTitle className="kiosk-header text-white font-bold tracking-tight text-2xl xl:text-3xl leading-none">
-                  WIP Summary
-                </CardTitle>
-                <div className="rounded-full border border-emerald-400/25 bg-emerald-500/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-emerald-300">
-                  Live
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent className="pt-1.5 pb-2 flex-1 min-h-0">
-              <div className="grid h-full content-start gap-1.5">
-                <div className="grid gap-1.5">
-                  <WipRow
-                    label="Total Input"
-                    value={wip.totalInput}
-                    max={Math.max(1, wip.totalInput)}
-                    tone="blue"
-                    icon={<ArrowDownToLine className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} />}
-                    showMeta={false}
-                  />
-                  <WipRow
-                    label="Total Output"
-                    value={wip.totalOutput}
-                    max={Math.max(1, wip.totalInput)}
-                    tone="emerald"
-                    icon={<ArrowUpFromLine className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} />}
-                    showMeta={false}
-                  />
-                  <WipRow
-                    label="Line WIP"
-                    value={wip.lineWip}
-                    max={Math.max(1, wip.lineWip)}
-                    tone="violet"
-                    icon={<Layers3 className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} />}
-                    showMeta={false}
-                  />
-                </div>
-
-                <div className="relative py-1">
-                  <div className="h-px bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.14),transparent)]" />
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-[#060E1C] px-2.5 py-[3px] text-[8px] font-black uppercase tracking-[0.14em] text-white/40">
-                    Process WIP
-                  </div>
-                </div>
-
-                <div className="grid gap-1.5">
-                  {visibleWipRows.map((r, idx) => {
-                    const partName = String(r.label).replace(/\s*wip\s*$/i, "").trim().toLowerCase();
-                    const meta = wipMeta[partName] ?? {
-                      tone: "slate" as WipTone,
-                      icon: <Layers3 className={isCompactWip ? "h-4 w-4" : "h-[18px] w-[18px]"} />,
-                    };
-                    return (
-                      <WipRow
-                        key={`${r.label}-${idx}`}
-                        label={r.label}
-                        value={r.value}
-                        max={Math.max(1, r.max)}
-                        tone={meta.tone}
-                        icon={meta.icon}
-                        showMeta={false}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            <table className="w-full table-fixed border-collapse kiosk-data">
+              <TableColGroup />
+              <tfoot>
+                <tr style={{ height: 48 }}>
+                  <td className="px-3" style={{ background: "#1A2E5E" }}>
+                    <span
+                      className="rounded-full px-2.5 py-0.5 font-black uppercase kiosk-data"
+                      style={{
+                        fontSize: 11,
+                        letterSpacing: "0.16em",
+                        background: "rgba(255,255,255,0.1)",
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        color: "rgba(255,255,255,0.8)",
+                      }}
+                    >
+                      Total
+                    </span>
+                  </td>
+                  <td
+                    className="text-right px-3 tabular-nums kiosk-data"
+                    style={{ fontSize: "1.2rem", fontWeight: 900, color: "#ffffff", background: "#064E3B" }}
+                  >
+                    {computed.totalTarget}
+                  </td>
+                  <td
+                    className="text-right px-3 tabular-nums kiosk-data"
+                    style={{ fontSize: "1.2rem", fontWeight: 900, color: "#ffffff", background: "#5B21B6" }}
+                  >
+                    {computed.totalTarget}
+                  </td>
+                  <td
+                    className="text-right px-3 tabular-nums kiosk-data"
+                    style={{ fontSize: "1.2rem", fontWeight: 900, color: "#ffffff", background: "#78350F" }}
+                  >
+                    {computed.totalActual}
+                  </td>
+                  <td
+                    className="text-right px-3 tabular-nums kiosk-data"
+                    style={{ fontSize: "1.2rem", fontWeight: 900, color: "#ffffff", background: "#0C4A6E" }}
+                  >
+                    {computed.totalActual}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
+
+        {/* ── RIGHT PANEL: WIP SUMMARY ── */}
+        <div style={panelStyle}>
+
+          {/* Panel header */}
+          <div
+            className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b"
+            style={{ borderColor: "var(--kiosk-panel-border, rgba(255,255,255,0.07))" }}
+          >
+            <h2
+              className="kiosk-header uppercase tracking-[0.18em]"
+              style={{
+                fontSize: "1.2rem",
+                fontWeight: 800,
+                color: "var(--kiosk-text, #ffffff)",
+              }}
+            >
+              WIP Summary
+            </h2>
+            <div className="flex items-center gap-1.5">
+              <div
+                className="h-[7px] w-[7px] rounded-full bg-emerald-400"
+                style={{ animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite" }}
+              />
+              <span
+                className="kiosk-header font-black uppercase"
+                style={{ fontSize: 9, letterSpacing: "0.2em", color: "#34D399" }}
+              >
+                LIVE
+              </span>
+            </div>
+          </div>
+
+          {/* Color stripe */}
+          <div
+            className="h-[2px] w-full shrink-0"
+            style={{
+              background:
+                "linear-gradient(90deg,#06B6D4 0%,#3B82F6 33%,#A78BFA 66%,#F59E0B 100%)",
+            }}
+          />
+
+          {/*
+           * Rows container — flex:1, each WipRow has grow=true (flex:1)
+           * so all 8 rows share the available height equally.
+           */}
+          <div
+            className="flex flex-col px-2.5 py-2 gap-1.5"
+            style={{ flex: 1, minHeight: 0 }}
+          >
+            <WipRow
+              label="Total Input"
+              value={wip.totalInput}
+              max={Math.max(1, wip.totalInput)}
+              fillColor="#3B82F6"
+              glowColor="rgba(59,130,246,0.7)"
+              icon={<ArrowDownToLine className="h-[15px] w-[15px]" />}
+              grow
+            />
+            <WipRow
+              label="Total Output"
+              value={wip.totalOutput}
+              max={Math.max(1, wip.totalInput)}
+              fillColor="#00FF9D"
+              glowColor="rgba(0,255,157,0.7)"
+              icon={<ArrowUpFromLine className="h-[15px] w-[15px]" />}
+              grow
+            />
+            <WipRow
+              label="Line WIP"
+              value={wip.lineWip}
+              max={Math.max(1, wip.lineWip)}
+              fillColor="#A855F7"
+              glowColor="rgba(168,85,247,0.7)"
+              icon={<Layers3 className="h-[15px] w-[15px]" />}
+              grow
+            />
+
+            {/* Divider — shrink-0 so it never consumes row height */}
+            <div className="relative flex shrink-0 items-center py-0.5">
+              <div
+                className="flex-1 h-px"
+                style={{
+                  background:
+                    "linear-gradient(90deg,transparent,rgba(128,128,128,0.25),transparent)",
+                }}
+              />
+              <span
+                className="mx-2 kiosk-header uppercase rounded-full px-2 py-0.5"
+                style={{
+                  fontSize: "0.8rem",
+                  letterSpacing: "0.15em",
+                  fontWeight: 800,
+                  opacity: 0.7,
+                  background: "var(--kiosk-wip-row-idle, rgba(255,255,255,0.018))",
+                  color: "var(--kiosk-text, rgba(255,255,255,0.5))",
+                  border: "1px solid var(--kiosk-wip-border, rgba(255,255,255,0.07))",
+                }}
+              >
+                Process WIP
+              </span>
+              <div
+                className="flex-1 h-px"
+                style={{
+                  background:
+                    "linear-gradient(90deg,rgba(128,128,128,0.25),transparent)",
+                }}
+              />
+            </div>
+
+            {/* Per-part rows — each grows to share remaining height */}
+            {visibleWipRows.map((r, idx) => {
+              const partName = String(r.label)
+                .replace(/\s*wip\s*$/i, "")
+                .trim()
+                .toLowerCase();
+              const cfg = wipParts[partName] ?? {
+                fill: "#64748B",
+                glow: "rgba(100,116,139,0.5)",
+                icon: <Layers3 className="h-[15px] w-[15px]" />,
+              };
+              return (
+                <WipRow
+                  key={`${r.label}-${idx}`}
+                  label={r.label}
+                  value={r.value}
+                  max={Math.max(1, r.max)}
+                  fillColor={cfg.fill}
+                  glowColor={cfg.glow}
+                  icon={cfg.icon}
+                  grow
+                />
+              );
+            })}
+          </div>
+        </div>
+
       </div>
     </div>
   );

@@ -736,7 +736,7 @@ export default function Page() {
         </div>
 
         <div className="relative z-10 flex h-full flex-col min-h-0">
-          <div className={cn("px-4", compactH ? "pt-2" : "pt-3")}>
+          <div className={cn("px-4 kiosk-topbar", compactH ? "pt-2" : "pt-3")}>
             <div className="flex items-end justify-between gap-3 relative">
               <div className="min-w-0">
                 <div className="kiosk-header tracking-[0.25em] uppercase text-white/45 text-[var(--fs-sub)]">
@@ -851,16 +851,34 @@ export default function Page() {
             --kiosk-row-odd: #0F1629;
             --kiosk-row-even: #151C35;
             --kiosk-row-hover: #1E2B45;
+            --kiosk-panel-bg: rgba(255,255,255,0.025);
+            --kiosk-panel-border: rgba(255,255,255,0.07);
+            --kiosk-row-border: rgba(255,255,255,0.05);
+            --kiosk-wip-row-active: rgba(255,255,255,0.04);
+            --kiosk-wip-row-idle: rgba(255,255,255,0.018);
+            --kiosk-wip-border: rgba(255,255,255,0.06);
+            --kiosk-wip-label-active: rgba(255,255,255,0.85);
+            --kiosk-wip-label-idle: rgba(255,255,255,0.3);
+            --kiosk-seg-empty: rgba(255,255,255,0.07);
           }
           [data-theme="light"] {
-            --kiosk-bg: #EEF2F8;
+            --kiosk-bg: #F1F5F9;
             --kiosk-card: rgba(255,255,255,0.98);
             --kiosk-border: rgba(0,0,0,0.10);
             --kiosk-text: #0F172A;
             --kiosk-text-muted: rgba(15,23,42,0.55);
-            --kiosk-row-odd: #F8FAFD;
-            --kiosk-row-even: #EEF3FB;
-            --kiosk-row-hover: #E2EAFA;
+            --kiosk-row-odd: #ffffff;
+            --kiosk-row-even: #f8fafc;
+            --kiosk-row-hover: #e2e8f0;
+            --kiosk-panel-bg: rgba(255,255,255,0.98);
+            --kiosk-panel-border: rgba(0,0,0,0.08);
+            --kiosk-row-border: rgba(0,0,0,0.06);
+            --kiosk-wip-row-active: rgba(0,0,0,0.025);
+            --kiosk-wip-row-idle: rgba(0,0,0,0.015);
+            --kiosk-wip-border: rgba(0,0,0,0.07);
+            --kiosk-wip-label-active: #1e293b;
+            --kiosk-wip-label-idle: #94a3b8;
+            --kiosk-seg-empty: rgba(0,0,0,0.10);
           }
 
           /* Light theme — KPI cards: white bg with colored top border */
@@ -900,6 +918,50 @@ export default function Page() {
           [data-theme="light"] .kiosk-kpi-title { color: #fff !important; }
           /* Light theme — card subtitle */
           [data-theme="light"] .kiosk-kpi-sub { opacity: 0.7 !important; }
+
+          /* Light theme — actual/achievement badges: solid for readability */
+          [data-theme="light"] .kiosk-badge-ok {
+            background: #15803d !important;
+            color: #ffffff !important;
+            border-color: transparent !important;
+          }
+          [data-theme="light"] .kiosk-badge-fail {
+            background: #dc2626 !important;
+            color: #ffffff !important;
+            border-color: transparent !important;
+          }
+
+          /* Light theme — header bar stays dark for readability */
+          [data-theme="light"] .kiosk-topbar {
+            background: #0f172a !important;
+            border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+            padding-bottom: 10px !important;
+          }
+
+          /* Light theme — slide 2 table and badges */
+          [data-theme="light"] .kiosk-s2-card {
+            background: #ffffff !important;
+            border-color: rgba(0,0,0,0.08) !important;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10) !important;
+          }
+          [data-theme="light"] .kiosk-s2-cell-ok {
+            background: #16a34a !important;
+            border-color: transparent !important;
+          }
+          [data-theme="light"] .kiosk-s2-cell-fail {
+            background: #4f46e5 !important;
+            border-color: transparent !important;
+          }
+          [data-theme="light"] .kiosk-s2-total-td {
+            background: rgba(249,115,22,0.07) !important;
+          }
+          [data-theme="light"] .kiosk-s2-total-box {
+            background: #fff7ed !important;
+            border-color: #f97316 !important;
+          }
+          [data-theme="light"] .kiosk-s2-total-value { color: #c2410c !important; }
+          [data-theme="light"] .kiosk-s2-cell-zero   { color: #94a3b8 !important; }
+
           [data-theme="midnight"] {
             --kiosk-bg: #08081A;
             --kiosk-card: rgba(8,8,26,0.97);
@@ -909,6 +971,15 @@ export default function Page() {
             --kiosk-row-odd: #0C0C24;
             --kiosk-row-even: #10102E;
             --kiosk-row-hover: #18183C;
+            --kiosk-panel-bg: rgba(255,255,255,0.02);
+            --kiosk-panel-border: rgba(255,255,255,0.06);
+            --kiosk-row-border: rgba(255,255,255,0.04);
+            --kiosk-wip-row-active: rgba(255,255,255,0.04);
+            --kiosk-wip-row-idle: rgba(255,255,255,0.018);
+            --kiosk-wip-border: rgba(255,255,255,0.05);
+            --kiosk-wip-label-active: rgba(255,255,255,0.82);
+            --kiosk-wip-label-idle: rgba(255,255,255,0.28);
+            --kiosk-seg-empty: rgba(255,255,255,0.07);
           }
           [data-theme="ocean"] {
             --kiosk-bg: #091826;
@@ -919,6 +990,15 @@ export default function Page() {
             --kiosk-row-odd: #0B1E2E;
             --kiosk-row-even: #0E2438;
             --kiosk-row-hover: #142E48;
+            --kiosk-panel-bg: rgba(255,255,255,0.02);
+            --kiosk-panel-border: rgba(255,255,255,0.06);
+            --kiosk-row-border: rgba(255,255,255,0.04);
+            --kiosk-wip-row-active: rgba(255,255,255,0.04);
+            --kiosk-wip-row-idle: rgba(255,255,255,0.018);
+            --kiosk-wip-border: rgba(255,255,255,0.05);
+            --kiosk-wip-label-active: rgba(255,255,255,0.82);
+            --kiosk-wip-label-idle: rgba(255,255,255,0.28);
+            --kiosk-seg-empty: rgba(255,255,255,0.07);
           }
 
           /* ── Hide Scrollbars Globally ── */
