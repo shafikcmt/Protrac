@@ -61,7 +61,7 @@ class LineTargetBulkUpsertView(APIView):
                     defaults={
                         "target_quantity": int(target_quantity),
                         "work_hours": entry.get("work_hours") or 8,
-                        "worker_count": entry.get("worker_count") or None,
+                        "worker_count": entry.get("worker_count") or 1,
                     },
                 )
                 results.append(LineTargetSerializer(obj).data)

@@ -139,8 +139,18 @@ export function useLineTargets(options: UseLineTargetsOptions = {}) {
       }
       return res.json();
     },
-    onSuccess: () => {
-      toast.success("All line targets saved successfully");
+    onSuccess: (data: { saved: any[]; errors: string[] }) => {
+      const savedCount = data?.saved?.length ?? 0;
+      const errorCount = data?.errors?.length ?? 0;
+
+      if (savedCount > 0 && errorCount === 0) {
+        toast.success(`${savedCount} line target${savedCount > 1 ? "s" : ""} saved successfully`);
+      } else if (savedCount > 0 && errorCount > 0) {
+        toast.warning(`${savedCount} saved, ${errorCount} failed. Check line configuration.`);
+      } else {
+        toast.error(data?.errors?.[0] || "No targets were saved");
+      }
+
       const queryKey = apiHooks.getKeyByPath("get", "/api/tracking/line-targets/");
       queryClient.invalidateQueries({ queryKey });
       onSuccess?.();
