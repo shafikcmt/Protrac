@@ -260,6 +260,14 @@ def _get_current_inventory_info(
         .order_by("order__id", "part__name")
     )
 
+    # Hide orders manually marked complete on this line.
+    from tracking.models import LineStyleCompletion
+
+    completed_order_ids = LineStyleCompletion.objects.filter(
+        production_line=scanner.production_line
+    ).values_list("order_id", flat=True)
+    inventory_queryset = inventory_queryset.exclude(order_id__in=completed_order_ids)
+
     # Filter by order if specified
     if order_id:
         inventory_queryset = inventory_queryset.filter(order_id=order_id)

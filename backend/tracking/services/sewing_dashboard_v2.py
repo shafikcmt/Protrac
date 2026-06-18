@@ -235,6 +235,32 @@ def _apply_active_only_by_delivery(qs, delivery_field_path: str, active_only: bo
     return qs.filter(**{f"{delivery_field_path}__gt": t})
 
 
+def _exclude_completed_orders(
+    qs,
+    order_field_path: str,
+    production_line: ProductionLine,
+    active_only: bool = True,
+):
+    """Exclude orders manually marked complete on this line.
+
+    Completion is per (production_line, order). Only applied for the live
+    (today / active_only) view so historical/past-date reports are unaffected.
+
+    order_field_path is the queryset lookup that resolves to Order.id, e.g.
+    "order_id", "primary_bundle__order_id", "garment__primary_bundle__order_id".
+    """
+    if not active_only:
+        return qs
+
+    from tracking.models import LineStyleCompletion
+
+    completed_order_ids = LineStyleCompletion.objects.filter(
+        production_line=production_line
+    ).values_list("order_id", flat=True)
+
+    return qs.exclude(**{f"{order_field_path}__in": completed_order_ids})
+
+
 # ----------------------------
 # Bundles queryset helpers
 # ----------------------------
@@ -317,13 +343,7 @@ def _get_todays_input_bundles_queryset(
     )
 
     qs = _apply_active_only_by_delivery(qs, "order__delivery_date", active_only)
-
-    if active_only:
-        from tracking.models import LineStyleCompletion
-        completed_order_ids = LineStyleCompletion.objects.filter(
-            production_line=production_line
-        ).values_list("order_id", flat=True)
-        qs = qs.exclude(order_id__in=completed_order_ids)
+    qs = _exclude_completed_orders(qs, "order_id", production_line, active_only)
 
     if order_id:
         qs = qs.filter(order_id=order_id)
@@ -362,13 +382,7 @@ def _get_pending_input_bundles_upto_queryset(
     )
 
     qs = _apply_active_only_by_delivery(qs, "order__delivery_date", active_only)
-
-    if active_only:
-        from tracking.models import LineStyleCompletion
-        completed_order_ids = LineStyleCompletion.objects.filter(
-            production_line=production_line
-        ).values_list("order_id", flat=True)
-        qs = qs.exclude(order_id__in=completed_order_ids)
+    qs = _exclude_completed_orders(qs, "order_id", production_line, active_only)
 
     if order_id:
         qs = qs.filter(order_id=order_id)
@@ -400,6 +414,7 @@ def _get_current_wip_bundles_queryset(
         status__in=[BundleStatus.CREATED, BundleStatus.ISSUED_TO_SEWING],
     )
     qs = _apply_active_only_by_delivery(qs, "order__delivery_date", active_only)
+    qs = _exclude_completed_orders(qs, "order_id", production_line, active_only)
 
     if order_id:
         qs = qs.filter(order_id=order_id)
@@ -572,6 +587,7 @@ def _get_sewing_done_upto(
     qs = Garment.objects.filter(sewing_line=production_line, status__in=sewing_pass_statuses)
 
     qs = _apply_active_only_by_delivery(qs, "primary_bundle__order__delivery_date", active_only)
+    qs = _exclude_completed_orders(qs, "primary_bundle__order_id", production_line, active_only)
 
     if order_id:
         qs = qs.filter(primary_bundle__order_id=order_id)
@@ -609,6 +625,7 @@ def _count_garments_upto(
 ) -> int:
     qs = Garment.objects.filter(_garment_line_q(production_line))
     qs = _apply_active_only_by_delivery(qs, "primary_bundle__order__delivery_date", active_only)
+    qs = _exclude_completed_orders(qs, "primary_bundle__order_id", production_line, active_only)
 
     if statuses:
         qs = qs.filter(status__in=statuses)
@@ -697,6 +714,7 @@ def _get_today_sewing_pass_qty(
     ).filter(time_q)
 
     qs = _apply_active_only_by_delivery(qs, "primary_bundle__order__delivery_date", active_only)
+    qs = _exclude_completed_orders(qs, "primary_bundle__order_id", production_line, active_only)
 
     if order_id:
         qs = qs.filter(Q(order_id=order_id) | Q(primary_bundle__order_id=order_id))
@@ -735,6 +753,7 @@ def _get_line_qc_stats(
     ).select_related("garment__primary_bundle__order__style__buyer")
 
     qcs = _apply_active_only_by_delivery(qcs, "garment__primary_bundle__order__delivery_date", active_only)
+    qcs = _exclude_completed_orders(qcs, "garment__primary_bundle__order_id", production_line, active_only)
 
     if order_id:
         qcs = qcs.filter(garment__primary_bundle__order_id=order_id)
@@ -787,6 +806,7 @@ def _get_line_qc_stats_range(
     ).select_related("garment__primary_bundle__order__style__buyer")
 
     qcs = _apply_active_only_by_delivery(qcs, "garment__primary_bundle__order__delivery_date", active_only)
+    qcs = _exclude_completed_orders(qcs, "garment__primary_bundle__order_id", production_line, active_only)
 
     if order_id:
         qcs = qcs.filter(garment__primary_bundle__order_id=order_id)
@@ -917,6 +937,7 @@ def _calculate_dhu(
     )
 
     qcs = _apply_active_only_by_delivery(qcs, "garment__primary_bundle__order__delivery_date", active_only)
+    qcs = _exclude_completed_orders(qcs, "garment__primary_bundle__order_id", production_line, active_only)
 
     if order_id:
         qcs = qcs.filter(garment__primary_bundle__order_id=order_id)
@@ -971,6 +992,7 @@ def _calculate_dhu_range(
     )
 
     qcs = _apply_active_only_by_delivery(qcs, "garment__primary_bundle__order__delivery_date", active_only)
+    qcs = _exclude_completed_orders(qcs, "garment__primary_bundle__order_id", production_line, active_only)
 
     if order_id:
         qcs = qcs.filter(garment__primary_bundle__order_id=order_id)
@@ -1124,6 +1146,7 @@ def _get_hourly_breakdown(
         "primary_bundle__order__delivery_date",
         active_only,
     )
+    qs = _exclude_completed_orders(qs, "primary_bundle__order_id", production_line, active_only)
 
     if order_ids:
         qs = qs.filter(Q(order_id__in=order_ids) | Q(primary_bundle__order_id__in=order_ids))
@@ -1214,6 +1237,9 @@ def _get_hourly_breakdown(
         "garment__primary_bundle__order__delivery_date",
         active_only,
     )
+    rework_qcs = _exclude_completed_orders(
+        rework_qcs, "garment__primary_bundle__order_id", production_line, active_only
+    )
 
     if order_ids:
         rework_qcs = rework_qcs.filter(garment__primary_bundle__order_id__in=order_ids)
@@ -1282,6 +1308,7 @@ def _get_parts_hourly_data(
         created_at__date=target_date,
     )
     qs = _apply_active_only_by_delivery(qs, "bundle__order__delivery_date", active_only)
+    qs = _exclude_completed_orders(qs, "bundle__order_id", production_line, active_only)
 
     line_field, _ = _bundle_line_and_issued_fields()
     qs = qs.filter(**{f"bundle__{line_field}": production_line})
@@ -1374,6 +1401,7 @@ def _get_assemble_hourly_totals(
     # Filter by scanner.production_line — assembly scans set garment (not bundle),
     # so bundle__line is always NULL and must not be used here.
     qs = qs.filter(scanner__production_line=production_line)
+    qs = _exclude_completed_orders(qs, "garment__order_id", production_line, active_only)
 
     if not qs.exists():
         return [0] * hour_count
@@ -1443,6 +1471,7 @@ def _get_hourly_quality_rows(
     )
 
     qcs_all = _apply_active_only_by_delivery(qcs_all, "garment__primary_bundle__order__delivery_date", active_only)
+    qcs_all = _exclude_completed_orders(qcs_all, "garment__primary_bundle__order_id", production_line, active_only)
 
     if order_id:
         qcs_all = qcs_all.filter(garment__primary_bundle__order_id=order_id)
@@ -1670,6 +1699,7 @@ def _get_end_line_defects(
     )
 
     qcs = _apply_active_only_by_delivery(qcs, "garment__primary_bundle__order__delivery_date", active_only)
+    qcs = _exclude_completed_orders(qcs, "garment__primary_bundle__order_id", production_line, active_only)
 
     if order_id:
         qcs = qcs.filter(garment__primary_bundle__order_id=order_id)
