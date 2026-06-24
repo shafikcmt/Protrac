@@ -165,13 +165,17 @@ CORS_ALLOW_CREDENTIALS = True
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
 
+# Allow all origins via env var, or implicitly in DEBUG mode
+CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
+
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
     ALLOWED_HOSTS = ["*", "localhost", "127.0.0.1"]
 
-if not CORS_ALLOWED_ORIGINS:
+if not CORS_ALLOW_ALL_ORIGINS and not CORS_ALLOWED_ORIGINS:
     raise ValueError(
-        "CORS_ALLOWED_ORIGINS environment variable is required. "
+        "CORS_ALLOWED_ORIGINS environment variable is required "
+        "(unless CORS_ALLOW_ALL_ORIGINS=True). "
         "Please set it in your .env file."
     )
 
