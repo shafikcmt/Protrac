@@ -1,16 +1,34 @@
 from __future__ import annotations
 
+import logging
+import time
 from typing import List, Dict, Any, Optional
 from datetime import date
 
-import pendulum
-from django.db.models import Q, Count, Max
+from django.db.models import Q, Count, Sum
+from django.db.models.functions import TruncDate
 
 from common.utils.time import today, day_range
-from tracking.models import ProductionLine, Order, Bundle, QualityCheck, LineStyleCompletion
+from tracking.models import (
+    ProductionLine,
+    Order,
+    Bundle,
+    Garment,
+    PartInventory,
+    QualityCheck,
+    LineStyleCompletion,
+)
 from tracking.models.constants import LineType, GarmentStatus
 from tracking.models.constants import QualityCheckStatus
 from tracking.models import Scan as TrackingScan
+from tracking.services.line_visibility import (
+    is_style_complete,
+    pending_quantity as _pending_quantity,
+    get_manual_completed_order_ids,
+)
+
+
+logger = logging.getLogger("tracking.reports.daily_production")
 
 
 # ----------------------------
@@ -47,6 +65,46 @@ def _apply_active_only_by_delivery(
     return qs.filter(**{f"{delivery_field_path}__gt": cutoff_date})
 
 
+def _normalize_part_name(name: str) -> str:
+    return str(name or "").strip().lower()
+
+
+def _get_required_parts_for_order(order) -> Optional[List[str]]:
+    """Return the list of part names required by the order's style (if any)."""
+    if not order:
+        return None
+
+    style = getattr(order, "style", None)
+    if not style:
+        return None
+
+    rel_candidates = ["parts", "assembly_parts", "cut_parts", "required_parts"]
+    for attr in rel_candidates:
+        rel = getattr(style, attr, None)
+        if rel is None:
+            continue
+
+        all_fn = getattr(rel, "all", None)
+        if callable(all_fn):
+            try:
+                names = []
+                for obj in all_fn():
+                    n = getattr(obj, "name", None)
+                    if n:
+                        names.append(str(n).strip())
+                if names:
+                    return names
+            except Exception:
+                pass
+
+    for attr in ["parts_list", "parts_names"]:
+        val = getattr(style, attr, None)
+        if isinstance(val, (list, tuple)) and val:
+            return [str(x).strip() for x in val if str(x).strip()]
+
+    return None
+
+
 # ----------------------------
 # MAIN
 # ----------------------------
@@ -73,14 +131,22 @@ def get_daily_production_report_data(
     Behavior:
       - Today's report   -> expired/null delivery orders hidden
       - Past date report -> all matching orders shown
+
+    Performance: metrics are bulk-aggregated per line (a handful of grouped
+    queries each) instead of issuing per-order / per-part queries, removing the
+    previous N+1 explosion.
     """
+    started_at = time.perf_counter()
+
     if report_date is None:
         report_date = today()
 
     # Apply delivery filter only for current/today report
     active_only = active_only and _should_apply_active_only(report_date)
 
-    # Sewing lines
+    # Sewing lines only. Daily Production Report covers sewing lines exclusively;
+    # cutting/finishing lines are never processed here. Any caller-supplied line
+    # ids are intersected with sewing lines, so non-sewing ids are ignored.
     lines_qs = ProductionLine.objects.filter(line_type=LineType.SEWING)
 
     if production_line_id:
@@ -88,10 +154,17 @@ def get_daily_production_report_data(
     elif production_line_ids:
         lines_qs = lines_qs.filter(id__in=production_line_ids)
 
-    # Orders base queryset
+    # Orders base queryset (lightweight: select_related for all scalar relations
+    # rendered in the response, prefetch style parts used by input/parts metrics).
     orders_qs = (
-        Order.objects.select_related("style__buyer", "style__season", "size", "color")
-        .prefetch_related("bundles", "garments", "part_inventories")
+        Order.objects.select_related(
+            "style",
+            "style__buyer",
+            "style__season",
+            "size",
+            "color",
+        )
+        .prefetch_related("style__parts")
     )
 
     # Only today's report should hide expired delivery orders
@@ -130,24 +203,86 @@ def get_daily_production_report_data(
     if date_to:
         orders_qs = orders_qs.filter(created_at__date__lte=date_to)
 
+    day_start, day_end = day_range(report_date)
+
     report_data: List[Dict[str, Any]] = []
+    lines_processed = 0
+    orders_processed = 0
 
     for line in lines_qs:
-        # Orders that have activity on this line
-        line_orders = orders_qs.filter(
-            Q(bundles__assigned_sewing_line=line)
-            | Q(garments__sewing_line=line)
-            | Q(part_inventories__production_line=line)
-        ).distinct()
+        # Orders with any activity on this line. Resolve the candidate order ids
+        # from three cheap, indexed lookups and union them in Python instead of
+        # a single DISTINCT query that OR-joins bundles x garments x
+        # part_inventories (which explodes into a huge intermediate result set).
+        bundle_activity = set(
+            Bundle.objects.filter(assigned_sewing_line=line)
+            .values_list("order_id", flat=True)
+            .distinct()
+        )
+        garment_activity = set(
+            Garment.objects.filter(sewing_line=line)
+            .order_by()
+            .values_list("order_id", flat=True)
+            .distinct()
+        )
+        part_inventory_orders = set(
+            PartInventory.objects.filter(production_line=line)
+            .values_list("order_id", flat=True)
+            .distinct()
+        )
+        bundle_activity.discard(None)
+        garment_activity.discard(None)
 
-        # Determine the active order: whichever order has the most recently issued bundle
+        candidate_ids = bundle_activity | garment_activity | part_inventory_orders
+        candidate_ids.discard(None)
+        if not candidate_ids:
+            continue
+
+        # Apply the order-level filters (delivery/buyer/style/order/size/color).
+        line_orders = list(orders_qs.filter(id__in=candidate_ids))
+        if not line_orders:
+            continue
+
+        lines_processed += 1
+        order_ids_on_line = [o.id for o in line_orders]
+
+        # Determine the active order: order with the most recently issued bundle
+        # on this line. Direct Bundle query (no per-order annotate/first).
         active_order_id = (
-            line_orders
-            .filter(bundles__assigned_sewing_line=line, bundles__issued_at__isnull=False)
-            .annotate(latest_issued=Max("bundles__issued_at"))
-            .order_by("-latest_issued")
-            .values_list("id", flat=True)
+            Bundle.objects.filter(
+                assigned_sewing_line=line,
+                issued_at__isnull=False,
+                issued_at__lte=day_end,
+                order_id__in=order_ids_on_line,
+            )
+            .order_by("-issued_at")
+            .values_list("order_id", flat=True)
             .first()
+        )
+
+        # Preload orders manually marked complete on this line (single source of
+        # truth in line_visibility). For past-date reports only completions made
+        # on or before report_date count, so history is not rewritten by a
+        # completion recorded later.
+        completed_order_ids = get_manual_completed_order_ids(
+            line, as_of_date=report_date
+        ) & set(order_ids_on_line)
+
+        # Style of the currently-active order. A "pending transition" is only a
+        # *different style* still finishing while this newer style runs — sibling
+        # sizes/colors of the active style are part of the same active run and
+        # must not be flagged.
+        active_style_id = next(
+            (o.style_id for o in line_orders if o.id == active_order_id), None
+        )
+
+        metrics = _aggregate_line_metrics(
+            line=line,
+            order_ids=order_ids_on_line,
+            day_start=day_start,
+            day_end=day_end,
+            bundle_activity=bundle_activity,
+            garment_activity=garment_activity,
         )
 
         line_report = {
@@ -157,61 +292,433 @@ def get_daily_production_report_data(
         }
 
         for order in line_orders:
-            order_data = _calculate_order_metrics(
+            order_data = _build_order_row(
                 order=order,
-                production_line=line,
+                line=line,
                 report_date=report_date,
                 active_only=active_only,
                 active_order_id=active_order_id,
+                active_style_id=active_style_id,
+                completed_order_ids=completed_order_ids,
+                metrics=metrics,
             )
             if order_data:
                 line_report["orders"].append(order_data)
+                orders_processed += 1
 
         if line_report["orders"]:
             report_data.append(line_report)
 
+    elapsed_ms = (time.perf_counter() - started_at) * 1000
+    logger.info(
+        "daily_production_report report_date=%s active_only=%s "
+        "lines_processed=%d orders_processed=%d elapsed_ms=%.1f",
+        report_date,
+        active_only,
+        lines_processed,
+        orders_processed,
+        elapsed_ms,
+    )
+
     return report_data
 
 
-def _calculate_order_metrics(
-    order: Order,
-    production_line: ProductionLine,
-    report_date: date,
-    active_only: bool = True,
-    active_order_id: Optional[int] = None,
-) -> Optional[Dict[str, Any]]:
-    """Calculate all metrics for a single order on a production line for the report date."""
+# ----------------------------
+# Bulk aggregation (per line)
+# ----------------------------
 
-    # Extra safety: only today's report excludes null / expired delivery dates
+def _aggregate_line_metrics(
+    line: ProductionLine,
+    order_ids: List[int],
+    day_start,
+    day_end,
+    bundle_activity: set,
+    garment_activity: set,
+) -> Dict[str, Dict[int, Any]]:
+    """
+    Compute every metric for all orders on a single line using a small fixed
+    number of grouped aggregate queries (instead of per-order/per-part queries).
+
+    Returns a dict of metric-name -> {order_id: value}. Orders with no rows for
+    a metric are simply absent and default to 0 when read.
+
+    `bundle_activity` / `garment_activity` are the precomputed sets of order ids
+    with bundle / garment activity on this line (reused from the caller).
+    """
+    day_filter_kwargs = {"range": (day_start, day_end)}
+
+    # --- Working days: distinct dates with *actual* production activity per
+    # order (bundle input OR sewing-QC output). A day with no activity is not
+    # counted. Date sets are unioned in Python so a day with both input and
+    # output is counted once. Bounded to <= day_end so past-date reports stay
+    # accurate for the selected date. ---
+    working_day_dates: Dict[int, set] = {}
+    for row in (
+        Bundle.objects.filter(
+            assigned_sewing_line=line,
+            order_id__in=order_ids,
+            issued_at__isnull=False,
+            issued_at__lte=day_end,
+        )
+        .order_by()
+        .values("order_id")
+        .annotate(d=TruncDate("issued_at"))
+        .values("order_id", "d")
+        .distinct()
+    ):
+        if row["d"] is not None:
+            working_day_dates.setdefault(row["order_id"], set()).add(row["d"])
+
+    for row in (
+        TrackingScan.objects.filter(
+            garment__order_id__in=order_ids,
+            garment__sewing_line=line,
+            scanner__scanner_type="sewing_qc_check",
+            scanner__production_line=line,
+            created_at__lte=day_end,
+        )
+        .order_by()
+        .values("garment__order_id")
+        .annotate(d=TruncDate("created_at"))
+        .values("garment__order_id", "d")
+        .distinct()
+    ):
+        if row["d"] is not None:
+            working_day_dates.setdefault(row["garment__order_id"], set()).add(row["d"])
+
+    working_days: Dict[int, int] = {
+        oid: len(dates) for oid, dates in working_day_dates.items()
+    }
+
+    # --- Input: issued bundle garment_quantity grouped by (order, part) ---
+    # order_id -> { normalized_part_name: {"day": int, "cumulative": int} }
+    input_by_order: Dict[int, Dict[str, Dict[str, int]]] = {}
+    for row in (
+        Bundle.objects.filter(
+            assigned_sewing_line=line,
+            order_id__in=order_ids,
+            issued_at__isnull=False,
+            issued_at__lte=day_end,
+        )
+        .order_by()
+        .values("order_id", "part__name")
+        .annotate(
+            day=Sum("garment_quantity", filter=Q(issued_at__range=(day_start, day_end))),
+            cumulative=Sum("garment_quantity"),
+        )
+    ):
+        part_name = _normalize_part_name(row["part__name"])
+        if not part_name:
+            continue
+        bucket = input_by_order.setdefault(row["order_id"], {})
+        bucket[part_name] = {
+            "day": int(row["day"] or 0),
+            "cumulative": int(row["cumulative"] or 0),
+        }
+
+    # --- Parts production: completed bundle qty grouped by (order, part) ---
+    # order_id -> { part_id: {"day": int, "cumulative": int} }
+    parts_by_order: Dict[int, Dict[int, Dict[str, int]]] = {}
+    for row in (
+        Bundle.objects.filter(
+            assigned_sewing_line=line,
+            order_id__in=order_ids,
+            completed_at__lte=day_end,
+        )
+        .order_by()
+        .values("order_id", "part_id")
+        .annotate(
+            day=Sum("garment_quantity", filter=Q(completed_at__range=(day_start, day_end))),
+            cumulative=Sum("garment_quantity"),
+        )
+    ):
+        bucket = parts_by_order.setdefault(row["order_id"], {})
+        bucket[row["part_id"]] = {
+            "day": int(row["day"] or 0),
+            "cumulative": int(row["cumulative"] or 0),
+        }
+
+    # --- Assembly input: garments issued for assembly grouped by order ---
+    assembly_by_order = _count_by_order(
+        Garment.objects.filter(
+            sewing_line=line,
+            order_id__in=order_ids,
+            issued_for_assembly_at__lte=day_end,
+        ),
+        "order_id",
+        day_field="issued_for_assembly_at",
+        day_range_value=day_filter_kwargs["range"],
+    )
+
+    # --- Output: distinct garments passed sewing QC (qc pass) ---
+    output_by_order = _distinct_garments_by_order(
+        TrackingScan.objects.filter(
+            garment__order_id__in=order_ids,
+            garment__sewing_line=line,
+            scanner__scanner_type="sewing_qc_check",
+            scanner__production_line=line,
+            created_at__lte=day_end,
+            garment__quality_checks__status=QualityCheckStatus.PASS,
+        ),
+        order_path="garment__order_id",
+        day_range_value=day_filter_kwargs["range"],
+    )
+
+    # --- Inspection: distinct garments scanned at sewing QC (any result) ---
+    inspection_by_order = _distinct_garments_by_order(
+        TrackingScan.objects.filter(
+            garment__order_id__in=order_ids,
+            garment__sewing_line=line,
+            scanner__scanner_type="sewing_qc_check",
+            scanner__production_line=line,
+            created_at__lte=day_end,
+        ),
+        order_path="garment__order_id",
+        day_range_value=day_filter_kwargs["range"],
+    )
+
+    # --- Packed: garments that passed finishing QC ---
+    packed_by_order = _count_by_order(
+        Garment.objects.filter(
+            sewing_line=line,
+            order_id__in=order_ids,
+            status=GarmentStatus.FINISHING_QC_PASS,
+            finishing_completed_at__lte=day_end,
+        ),
+        "order_id",
+        day_field="finishing_completed_at",
+        day_range_value=day_filter_kwargs["range"],
+    )
+
+    # --- DHU: inspected garments + defect counts (day & cumulative) ---
+    inspected_by_order: Dict[int, Dict[str, int]] = {}
+    for row in (
+        Garment.objects.filter(
+            sewing_line=line,
+            order_id__in=order_ids,
+            quality_checks__created_at__lte=day_end,
+        )
+        .order_by()
+        .values("order_id")
+        .annotate(
+            day=Count(
+                "id",
+                distinct=True,
+                filter=Q(quality_checks__created_at__range=(day_start, day_end)),
+            ),
+            cumulative=Count("id", distinct=True),
+        )
+    ):
+        inspected_by_order[row["order_id"]] = {
+            "day": int(row["day"] or 0),
+            "cumulative": int(row["cumulative"] or 0),
+        }
+
+    defects_by_order: Dict[int, Dict[str, int]] = {}
+    for row in (
+        QualityCheck.objects.filter(
+            garment__sewing_line=line,
+            garment__order_id__in=order_ids,
+            created_at__lte=day_end,
+        )
+        .order_by()
+        .values("garment__order_id")
+        .annotate(
+            day=Count("defects", filter=Q(created_at__range=(day_start, day_end))),
+            cumulative=Count("defects"),
+        )
+    ):
+        defects_by_order[row["garment__order_id"]] = {
+            "day": int(row["day"] or 0),
+            "cumulative": int(row["cumulative"] or 0),
+        }
+
+    return {
+        "bundle_activity": bundle_activity,
+        "garment_activity": garment_activity,
+        "working_days": working_days,
+        "input": input_by_order,
+        "parts": parts_by_order,
+        "assembly": assembly_by_order,
+        "output": output_by_order,
+        "inspection": inspection_by_order,
+        "packed": packed_by_order,
+        "inspected": inspected_by_order,
+        "defects": defects_by_order,
+    }
+
+
+def _count_by_order(qs, order_path, day_field, day_range_value):
+    """Group `qs` by order, returning {order_id: {"day", "cumulative"}} counts."""
+    result: Dict[int, Dict[str, int]] = {}
+    rows = qs.order_by().values(order_path).annotate(
+        day=Count("id", filter=Q(**{f"{day_field}__range": day_range_value})),
+        cumulative=Count("id"),
+    )
+    for row in rows:
+        result[row[order_path]] = {
+            "day": int(row["day"] or 0),
+            "cumulative": int(row["cumulative"] or 0),
+        }
+    return result
+
+
+def _distinct_garments_by_order(qs, order_path, day_range_value):
+    """Group `qs` by order, counting distinct garments for day & cumulative."""
+    result: Dict[int, Dict[str, int]] = {}
+    rows = qs.order_by().values(order_path).annotate(
+        day=Count(
+            "garment_id",
+            distinct=True,
+            filter=Q(created_at__range=day_range_value),
+        ),
+        cumulative=Count("garment_id", distinct=True),
+    )
+    for row in rows:
+        result[row[order_path]] = {
+            "day": int(row["day"] or 0),
+            "cumulative": int(row["cumulative"] or 0),
+        }
+    return result
+
+
+# ----------------------------
+# Per-order row assembly (reads from preloaded metrics, no queries)
+# ----------------------------
+
+def _build_order_row(
+    order: Order,
+    line: ProductionLine,
+    report_date: date,
+    active_only: bool,
+    active_order_id: Optional[int],
+    active_style_id: Optional[int],
+    completed_order_ids: set,
+    metrics: Dict[str, Dict[int, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Assemble a single order's report row from preloaded line metrics."""
+
+    oid = order.id
+
+    # Only today's report excludes null / expired delivery dates.
     if active_only:
         dd = getattr(order, "delivery_date", None)
         if dd is None or dd <= report_date:
             return None
 
-    # Check A: Skip if manually marked complete on this line
-    if active_only:
-        if LineStyleCompletion.objects.filter(
-            production_line=production_line, order=order
-        ).exists():
-            return None
+    # Manual completion hides the style on this line for the selected date and
+    # everything after it (completed_order_ids is already scoped to completions
+    # made on or before report_date). Applies to past-date reports too.
+    if oid in completed_order_ids:
+        return None
 
-    day_start, day_end = day_range(report_date)
-
-    has_bundle_activity = order.bundles.filter(
-        assigned_sewing_line=production_line
-    ).exists()
-
-    has_garment_activity = order.garments.filter(
-        sewing_line=production_line
-    ).exists()
-
+    has_bundle_activity = oid in metrics["bundle_activity"]
+    has_garment_activity = oid in metrics["garment_activity"]
     if not has_bundle_activity and not has_garment_activity:
         return None
 
-    base_data = {
+    # --- Input (cumulative is the response "input" value) ---
+    input_part_totals = metrics["input"].get(oid, {})
+    cumulative_input = _calc_input_value(order, input_part_totals, "cumulative")
+
+    # --- Output ---
+    output = metrics["output"].get(oid, {"day": 0, "cumulative": 0})
+    cumulative_output = int(output.get("cumulative", 0) or 0)
+
+    # Auto-hide fully-output styles for *every* report date (computed as of the
+    # selected date). This removes duplicate sewing-line rows once the old
+    # style is finished, and makes past-date reports hide styles that were
+    # already complete before the selected date.
+    if is_style_complete(cumulative_input, cumulative_output):
+        return None
+
+    # --- Parts production keyed by style part name ---
+    parts_agg = metrics["parts"].get(oid, {})
+    parts_data: Dict[str, Dict[str, int]] = {}
+    for part in order.style.parts.all():
+        part_key = str(part.name).lower().replace(" ", "_")
+        vals = parts_agg.get(part.id, {"day": 0, "cumulative": 0})
+        parts_data[part_key] = {
+            "day": int(vals.get("day", 0) or 0),
+            "cumulative": int(vals.get("cumulative", 0) or 0),
+        }
+
+    assembly = metrics["assembly"].get(oid, {"day": 0, "cumulative": 0})
+    inspection = metrics["inspection"].get(oid, {"day": 0, "cumulative": 0})
+    packed = metrics["packed"].get(oid, {"day": 0, "cumulative": 0})
+
+    # --- DHU ---
+    inspected = metrics["inspected"].get(oid, {"day": 0, "cumulative": 0})
+    defects = metrics["defects"].get(oid, {"day": 0, "cumulative": 0})
+    daily_inspected = int(inspected.get("day", 0) or 0)
+    cumulative_inspected = int(inspected.get("cumulative", 0) or 0)
+    daily_defects = int(defects.get("day", 0) or 0)
+    cumulative_defects = int(defects.get("cumulative", 0) or 0)
+    dhu_day = (daily_defects / daily_inspected * 100) if daily_inspected > 0 else 0
+    dhu_average = (
+        (cumulative_defects / cumulative_inspected * 100)
+        if cumulative_inspected > 0
+        else 0
+    )
+
+    packed_cumulative = int(packed.get("cumulative", 0) or 0)
+    if packed_cumulative >= (order.quantity or 0):
+        return None
+
+    assembly_cumulative = int(assembly.get("cumulative", 0) or 0)
+    parts_cumulative = sum(p["cumulative"] for p in parts_data.values())
+
+    # As-of-date activity gate (date filter fix): only show a style on the
+    # selected date if it had real production activity on or before that date.
+    # Without this a style that only started *after* the selected date would
+    # leak into a past-date report with all-zero metrics.
+    cumulative_activity = (
+        cumulative_input
+        + cumulative_output
+        + assembly_cumulative
+        + parts_cumulative
+        + cumulative_inspected
+        + packed_cumulative
+    )
+    if cumulative_activity == 0:
+        return None
+
+    is_active_order = oid == active_order_id
+    pending_qty = _pending_quantity(cumulative_input, cumulative_output)
+
+    # A pending old style: a newer *different* style is active on this line and
+    # this older style still has un-output pieces (input != output). Sibling
+    # sizes/colors of the active style share its style id and are not flagged.
+    is_pending_transition = bool(
+        active_style_id is not None
+        and getattr(order, "style_id", None) != active_style_id
+        and pending_qty > 0
+    )
+
+    # "Mark Complete" is offered for a pending old style on the live (today)
+    # report whose delivery date is still valid.
+    needs_manual_complete = bool(
+        is_pending_transition
+        and active_only
+        and getattr(order, "delivery_date", None) is not None
+        and order.delivery_date > report_date
+    )
+
+    remarks_parts: List[str] = []
+    if is_pending_transition:
+        remarks_parts.append(
+            f"Old style pending: input {cumulative_input}, "
+            f"output {cumulative_output}, pending {pending_qty} pcs"
+        )
+        remarks_parts.append("New style started on this line")
+        if needs_manual_complete:
+            remarks_parts.append("Manual completion required")
+    remarks = " | ".join(remarks_parts)
+
+    result = {
         "order_id": order.id,
-        "production_line_id": production_line.id,
-        "line": production_line.name,
+        "production_line_id": line.id,
+        "line": line.name,
         "buyer": (
             order.style.buyer.name
             if getattr(order, "style", None) and getattr(order.style, "buyer", None)
@@ -223,476 +730,49 @@ def _calculate_order_metrics(
         "order_quantity": order.quantity,
         "delivery_date": getattr(order, "delivery_date", None),
         "working_hours": 8.0,
-        "working_days": max(
-            order.bundles.filter(
-                assigned_sewing_line=production_line,
-                issued_at__isnull=False,
-            ).dates("issued_at", "day").count(),
-            1,
-        ),
-    }
-
-    input_data = _get_input_metrics(
-        order=order,
-        production_line=production_line,
-        day_start=day_start,
-        day_end=day_end,
-        cutoff_date=report_date,
-        active_only=active_only,
-    )
-    input_total = int(input_data.get("cumulative", 0) or 0)
-
-    parts_data = _get_parts_production(
-        order=order,
-        production_line=production_line,
-        report_date=report_date,
-        active_only=active_only,
-    )
-    assembly_data = _get_assembly_metrics(
-        order=order,
-        production_line=production_line,
-        day_start=day_start,
-        day_end=day_end,
-        cutoff_date=report_date,
-        active_only=active_only,
-    )
-    output_data = _get_output_metrics(
-        order=order,
-        production_line=production_line,
-        day_start=day_start,
-        day_end=day_end,
-        cutoff_date=report_date,
-        active_only=active_only,
-    )
-    dhu_data = _get_dhu_metrics(
-        order=order,
-        production_line=production_line,
-        day_start=day_start,
-        day_end=day_end,
-        cutoff_date=report_date,
-        active_only=active_only,
-    )
-    inspection_data = _get_inspection_metrics(
-        order=order,
-        production_line=production_line,
-        day_start=day_start,
-        day_end=day_end,
-        cutoff_date=report_date,
-        active_only=active_only,
-    )
-
-    # Check B: Auto-hide if all bundles issued have been output (fully processed)
-    if active_only:
-        cumulative_input = int(input_data.get("cumulative", 0) or 0)
-        cumulative_output = int((output_data.get("output") or {}).get("cumulative", 0) or 0)
-        if cumulative_input > 0 and cumulative_input == cumulative_output:
-            return None
-
-    result = {
-        **base_data,
-        "input": input_total,
+        "working_days": max(metrics["working_days"].get(oid, 0), 1),
+        "input": cumulative_input,
         **parts_data,
-        **assembly_data,
-        **output_data,
-        **dhu_data,
-        **inspection_data,
+        "assembly_input": {
+            "day": int(assembly.get("day", 0) or 0),
+            "cumulative": int(assembly.get("cumulative", 0) or 0),
+        },
+        "output": {
+            "day": int(output.get("day", 0) or 0),
+            "cumulative": cumulative_output,
+        },
+        "dhu_day": round(dhu_day, 2),
+        "dhu_average": round(dhu_average, 2),
+        "inspection": {
+            "day": int(inspection.get("day", 0) or 0),
+            "cumulative": int(inspection.get("cumulative", 0) or 0),
+        },
+        "packed": {
+            "day": int(packed.get("day", 0) or 0),
+            "cumulative": packed_cumulative,
+        },
+        "needs_manual_complete": needs_manual_complete,
+        "is_pending_transition": is_pending_transition,
+        "pending_quantity": pending_qty,
+        "remarks": remarks,
     }
 
-    # Optional protection: hide fully packed orders
-    packed_cumm = (result.get("packed") or {}).get("cumulative", 0) or 0
-    if packed_cumm >= (order.quantity or 0):
-        return None
-
-    # Check C: "Mark as Complete" button — only for NON-active orders when a newer one exists
-    cumulative_input = int(input_data.get("cumulative", 0) or 0)
-    cumulative_output = int((output_data.get("output") or {}).get("cumulative", 0) or 0)
-    is_active_order = order.id == active_order_id
-
-    needs_manual_complete = bool(
-        active_only
-        and not is_active_order
-        and active_order_id is not None
-        and cumulative_input != cumulative_output
-        and getattr(order, "delivery_date", None) is not None
-        and order.delivery_date > report_date
-    )
-
-    result["needs_manual_complete"] = needs_manual_complete
     return result
 
 
-# ----------------------------
-# Metrics
-# ----------------------------
-
-def _normalize_part_name(name: str) -> str:
-    return str(name or "").strip().lower()
-
-
-def _get_required_parts_for_order(order) -> Optional[List[str]]:
-    if not order:
-        return None
-
-    style = getattr(order, "style", None)
-    if not style:
-        return None
-
-    rel_candidates = ["parts", "assembly_parts", "cut_parts", "required_parts"]
-    for attr in rel_candidates:
-        rel = getattr(style, attr, None)
-        if rel is None:
-            continue
-
-        all_fn = getattr(rel, "all", None)
-        if callable(all_fn):
-            try:
-                names = []
-                for obj in all_fn():
-                    n = getattr(obj, "name", None)
-                    if n:
-                        names.append(str(n).strip())
-                if names:
-                    return names
-            except Exception:
-                pass
-
-    for attr in ["parts_list", "parts_names"]:
-        val = getattr(style, attr, None)
-        if isinstance(val, (list, tuple)) and val:
-            return [str(x).strip() for x in val if str(x).strip()]
-
-    return None
-
-
-def _get_input_metrics(
-    order: Order,
-    production_line: ProductionLine,
-    day_start: pendulum.DateTime,
-    day_end: pendulum.DateTime,
-    cutoff_date: date,
-    active_only: bool = True,
-) -> Dict[str, int]:
-    daily_bundles = order.bundles.filter(
-        assigned_sewing_line=production_line,
-        issued_at__range=(day_start, day_end),
-    ).select_related("part")
-
-    daily_bundles = _apply_active_only_by_delivery(
-        daily_bundles,
-        "order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    cumulative_bundles = order.bundles.filter(
-        assigned_sewing_line=production_line,
-        issued_at__lte=day_end,
-    ).select_related("part")
-
-    cumulative_bundles = _apply_active_only_by_delivery(
-        cumulative_bundles,
-        "order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    def calc_input(bundles):
-        part_totals = {}
-
-        for b in bundles:
-            part_name = _normalize_part_name(
-                getattr(getattr(b, "part", None), "name", "")
-            )
-            if not part_name:
-                continue
-
-            qty = int(getattr(b, "garment_quantity", 0) or 0)
-            part_totals[part_name] = part_totals.get(part_name, 0) + qty
-
-        required_parts = _get_required_parts_for_order(order)
-
-        if required_parts:
-            keys = [_normalize_part_name(p) for p in required_parts]
-            matched = [part_totals[k] for k in keys if k in part_totals]
-            return min(matched) if matched else 0
-
-        return max(part_totals.values(), default=0)
-
-    return {
-        "day": calc_input(daily_bundles),
-        "cumulative": calc_input(cumulative_bundles),
-    }
-
-
-def _get_parts_production(
-    order: Order,
-    production_line: ProductionLine,
-    report_date: date,
-    active_only: bool = True,
-) -> Dict[str, Dict[str, int]]:
-    day_start, day_end = day_range(report_date)
-    parts = order.style.parts.all()
-    parts_data = {}
-
-    for part in parts:
-        daily_bundles = order.bundles.filter(
-            part=part,
-            assigned_sewing_line=production_line,
-            completed_at__range=(day_start, day_end),
-        )
-        daily_bundles = _apply_active_only_by_delivery(
-            daily_bundles,
-            "order__delivery_date",
-            report_date,
-            active_only,
-        )
-
-        cumulative_bundles = order.bundles.filter(
-            part=part,
-            assigned_sewing_line=production_line,
-            completed_at__lte=day_end,
-        )
-        cumulative_bundles = _apply_active_only_by_delivery(
-            cumulative_bundles,
-            "order__delivery_date",
-            report_date,
-            active_only,
-        )
-
-        daily_qty = sum(
-            int(getattr(b, "garment_quantity", 0) or 0) for b in daily_bundles
-        )
-        cumulative_qty = sum(
-            int(getattr(b, "garment_quantity", 0) or 0) for b in cumulative_bundles
-        )
-
-        part_key = str(part.name).lower().replace(" ", "_")
-        parts_data[part_key] = {"day": daily_qty, "cumulative": cumulative_qty}
-
-    return parts_data
-
-
-def _get_assembly_metrics(
-    order: Order,
-    production_line: ProductionLine,
-    day_start: pendulum.DateTime,
-    day_end: pendulum.DateTime,
-    cutoff_date: date,
-    active_only: bool = True,
-) -> Dict[str, Dict[str, int]]:
-    """Assembly input metrics."""
-    daily_input = order.garments.filter(
-        sewing_line=production_line,
-        issued_for_assembly_at__range=(day_start, day_end),
-    )
-    daily_input = _apply_active_only_by_delivery(
-        daily_input,
-        "primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    cumulative_input = order.garments.filter(
-        sewing_line=production_line,
-        issued_for_assembly_at__lte=day_end,
-    )
-    cumulative_input = _apply_active_only_by_delivery(
-        cumulative_input,
-        "primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    return {
-        "assembly_input": {
-            "day": daily_input.count(),
-            "cumulative": cumulative_input.count(),
-        }
-    }
-
-
-def _get_output_metrics(
-    order: Order,
-    production_line: ProductionLine,
-    day_start: pendulum.DateTime,
-    day_end: pendulum.DateTime,
-    cutoff_date: date,
-    active_only: bool = True,
-) -> Dict[str, Dict[str, int]]:
+def _calc_input_value(order, part_totals: Dict[str, Dict[str, int]], key: str) -> int:
     """
-    Output metrics rule:
-      production line + sewing qc scanner + qc status pass
+    Reproduce the original input rule:
+      - if the style declares required parts, input = min of matched part totals
+      - otherwise input = max across all part totals
+    `part_totals` maps normalized part name -> {"day", "cumulative"}.
     """
+    totals = {name: int(vals.get(key, 0) or 0) for name, vals in part_totals.items()}
 
-    daily_scans = TrackingScan.objects.filter(
-        garment__order=order,
-        garment__sewing_line=production_line,
-        scanner__scanner_type="sewing_qc_check",
-        scanner__production_line=production_line,
-        created_at__range=(day_start, day_end),
-        garment__quality_checks__status=QualityCheckStatus.PASS,
-    )
+    required_parts = _get_required_parts_for_order(order)
+    if required_parts:
+        keys = [_normalize_part_name(p) for p in required_parts]
+        matched = [totals[k] for k in keys if k in totals]
+        return min(matched) if matched else 0
 
-    daily_scans = _apply_active_only_by_delivery(
-        daily_scans,
-        "garment__primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    cumulative_scans = TrackingScan.objects.filter(
-        garment__order=order,
-        garment__sewing_line=production_line,
-        scanner__scanner_type="sewing_qc_check",
-        scanner__production_line=production_line,
-        created_at__lte=day_end,
-        garment__quality_checks__status=QualityCheckStatus.PASS,
-    )
-
-    cumulative_scans = _apply_active_only_by_delivery(
-        cumulative_scans,
-        "garment__primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    return {
-        "output": {
-            "day": daily_scans.values("garment_id").distinct().count(),
-            "cumulative": cumulative_scans.values("garment_id").distinct().count(),
-        }
-    }
-
-def _get_dhu_metrics(
-    order: Order,
-    production_line: ProductionLine,
-    day_start: pendulum.DateTime,
-    day_end: pendulum.DateTime,
-    cutoff_date: date,
-    active_only: bool = True,
-) -> Dict[str, float]:
-    """DHU (Defect per Hundred Units)."""
-    daily_qc_garments = order.garments.filter(
-        sewing_line=production_line,
-        quality_checks__created_at__range=(day_start, day_end),
-    ).distinct()
-    daily_qc_garments = _apply_active_only_by_delivery(
-        daily_qc_garments,
-        "primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    cumulative_qc_garments = order.garments.filter(
-        sewing_line=production_line,
-        quality_checks__created_at__lte=day_end,
-    ).distinct()
-    cumulative_qc_garments = _apply_active_only_by_delivery(
-        cumulative_qc_garments,
-        "primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    daily_inspected = daily_qc_garments.count()
-    daily_defects = (
-        QualityCheck.objects.filter(
-            garment__in=daily_qc_garments,
-            created_at__range=(day_start, day_end),
-        ).aggregate(total_defects=Count("defects"))["total_defects"] or 0
-    )
-    daily_dhu = (daily_defects / daily_inspected * 100) if daily_inspected > 0 else 0
-
-    cumulative_inspected = cumulative_qc_garments.count()
-    cumulative_defects = (
-        QualityCheck.objects.filter(
-            garment__in=cumulative_qc_garments,
-            created_at__lte=day_end,
-        ).aggregate(total_defects=Count("defects"))["total_defects"] or 0
-    )
-    average_dhu = (
-        (cumulative_defects / cumulative_inspected * 100)
-        if cumulative_inspected > 0
-        else 0
-    )
-
-    return {
-        "dhu_day": round(daily_dhu, 2),
-        "dhu_average": round(average_dhu, 2),
-    }
-
-
-def _get_inspection_metrics(
-    order: Order,
-    production_line: ProductionLine,
-    day_start: pendulum.DateTime,
-    day_end: pendulum.DateTime,
-    cutoff_date: date,
-    active_only: bool = True,
-) -> Dict[str, Dict[str, int]]:
-    """Inspection + Packing metrics."""
-
-    daily_inspection = TrackingScan.objects.filter(
-        garment__order=order,
-        garment__sewing_line=production_line,
-        scanner__scanner_type="sewing_qc_check",
-        scanner__production_line=production_line,
-        created_at__range=(day_start, day_end),
-    )
-
-    daily_inspection = _apply_active_only_by_delivery(
-        daily_inspection,
-        "garment__primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    cumulative_inspection = TrackingScan.objects.filter(
-        garment__order=order,
-        garment__sewing_line=production_line,
-        scanner__scanner_type="sewing_qc_check",
-        scanner__production_line=production_line,
-        created_at__lte=day_end,
-    )
-
-    cumulative_inspection = _apply_active_only_by_delivery(
-        cumulative_inspection,
-        "garment__primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    daily_packed = order.garments.filter(
-        sewing_line=production_line,
-        status=GarmentStatus.FINISHING_QC_PASS,
-        finishing_completed_at__range=(day_start, day_end),
-    )
-    daily_packed = _apply_active_only_by_delivery(
-        daily_packed,
-        "primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    cumulative_packed = order.garments.filter(
-        sewing_line=production_line,
-        status=GarmentStatus.FINISHING_QC_PASS,
-        finishing_completed_at__lte=day_end,
-    )
-    cumulative_packed = _apply_active_only_by_delivery(
-        cumulative_packed,
-        "primary_bundle__order__delivery_date",
-        cutoff_date,
-        active_only,
-    )
-
-    return {
-        "inspection": {
-            "day": daily_inspection.values("garment_id").distinct().count(),
-            "cumulative": cumulative_inspection.values("garment_id").distinct().count(),
-        },
-        "packed": {
-            "day": daily_packed.count(),
-            "cumulative": cumulative_packed.count(),
-        },
-    }
+    return max(totals.values(), default=0)

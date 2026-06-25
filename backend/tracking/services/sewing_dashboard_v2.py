@@ -252,11 +252,14 @@ def _exclude_completed_orders(
     if not active_only:
         return qs
 
-    from tracking.models import LineStyleCompletion
+    # Single source of truth for manual completions (line_visibility). Kept to
+    # the manual set here on purpose: this helper is invoked many times per
+    # dashboard request, so the heavier auto-hide aggregation is intentionally
+    # not run on this hot path. Fully-output styles already drop out of the
+    # live (pending-bundle based) slides on their own.
+    from tracking.services.line_visibility import get_manual_completed_order_ids
 
-    completed_order_ids = LineStyleCompletion.objects.filter(
-        production_line=production_line
-    ).values_list("order_id", flat=True)
+    completed_order_ids = get_manual_completed_order_ids(production_line)
 
     return qs.exclude(**{f"{order_field_path}__in": completed_order_ids})
 

@@ -92,10 +92,19 @@ def get_garment_heatmap_data(
         orders_qs = orders_qs.filter(
             Q(delivery_date__isnull=True) | Q(delivery_date__gt=today)
         )
-        # Exclude orders manually marked complete on any line
-        from tracking.models import LineStyleCompletion
-        completed_order_ids = LineStyleCompletion.objects.values_list("order_id", flat=True)
-        orders_qs = orders_qs.exclude(id__in=completed_order_ids)
+        # Hide styles that are hidden in the Daily Production Report — both
+        # manual completions and auto-completed (fully output) styles — using
+        # the shared line-visibility source of truth, so the heatmap stays
+        # consistent with every other surface.
+        from tracking.models import ProductionLine
+        from tracking.models.constants import LineType
+        from tracking.services.line_visibility import get_hidden_order_ids_for_line
+
+        hidden_order_ids: set = set()
+        for line in ProductionLine.objects.filter(line_type=LineType.SEWING):
+            hidden_order_ids |= get_hidden_order_ids_for_line(line)
+        if hidden_order_ids:
+            orders_qs = orders_qs.exclude(id__in=hidden_order_ids)
 
     # Build result
     orders_data = []

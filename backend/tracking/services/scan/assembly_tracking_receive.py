@@ -260,13 +260,13 @@ def _get_current_inventory_info(
         .order_by("order__id", "part__name")
     )
 
-    # Hide orders manually marked complete on this line.
-    from tracking.models import LineStyleCompletion
+    # Hide styles that are hidden in the Daily Production Report on this line —
+    # manual completions and auto-completed (fully output) styles — via the
+    # shared line-visibility source of truth.
+    from tracking.services.line_visibility import get_hidden_order_ids_for_line
 
-    completed_order_ids = LineStyleCompletion.objects.filter(
-        production_line=scanner.production_line
-    ).values_list("order_id", flat=True)
-    inventory_queryset = inventory_queryset.exclude(order_id__in=completed_order_ids)
+    hidden_order_ids = get_hidden_order_ids_for_line(scanner.production_line)
+    inventory_queryset = inventory_queryset.exclude(order_id__in=hidden_order_ids)
 
     # Filter by order if specified
     if order_id:
@@ -297,6 +297,11 @@ def _get_current_inventory_info(
             "size": inventory.order.size.name,
             "color": inventory.order.color.name,
             "part": inventory.part.name,
+            # Planned order quantity (uniform across all parts of an order).
+            # total_quantity is cumulative parts *received so far*, which differs
+            # per part until every bundle is received — order_quantity gives the
+            # consistent target used for the "Total" display.
+            "order_quantity": inventory.order.quantity,
             "total_quantity": inventory.total_quantity,
             "issued_quantity": inventory.issued_quantity,
             "available_quantity": inventory.total_quantity - inventory.issued_quantity,

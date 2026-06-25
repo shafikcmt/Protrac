@@ -146,6 +146,9 @@ export function ProductionReportTable({
           inspection: { day: 0, cumulative: 0 },
           packed: { day: 0, cumulative: 0 },
           needs_manual_complete: false,
+          is_pending_transition: false,
+          pending_quantity: 0,
+          remarks: "",
           __dhuDayNum: 0,
           __dhuDayDen: 0,
           __dhuAvgNum: 0,
@@ -161,6 +164,11 @@ export function ProductionReportTable({
       acc.order_quantity += Number(order.order_quantity || 0);
       acc.input += Number(order.input || 0);
       if (order.needs_manual_complete) acc.needs_manual_complete = true;
+      if (order.is_pending_transition) {
+        acc.is_pending_transition = true;
+        acc.pending_quantity += Number(order.pending_quantity || 0);
+        if (order.remarks && !acc.remarks) acc.remarks = order.remarks;
+      }
 
       const addMetric = (keyName: string) => {
         ensureMetric(acc, keyName);
@@ -315,7 +323,13 @@ export function ProductionReportTable({
 
                     return (
                       <Fragment key={`${buyer}-${order.__key}-${index}`}>
-                        <TableRow>
+                        <TableRow
+                          className={
+                            order.is_pending_transition
+                              ? "bg-amber-50 dark:bg-amber-950/30"
+                              : undefined
+                          }
+                        >
                           <TableCell className="font-medium">
                             {hasDetails ? (
                               <Dialog>
@@ -506,6 +520,19 @@ export function ProductionReportTable({
                           </TableCell>
 
                           <TableCell className="text-xs">
+                            {order.is_pending_transition && (
+                              <div className="mb-1 space-y-0.5">
+                                <Badge
+                                  variant="outline"
+                                  className="border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                >
+                                  Pending: {formatNumber(order.pending_quantity || 0)} pcs
+                                </Badge>
+                                <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400">
+                                  {order.remarks || "New style started on this line"}
+                                </p>
+                              </div>
+                            )}
                             {order.needs_manual_complete && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>

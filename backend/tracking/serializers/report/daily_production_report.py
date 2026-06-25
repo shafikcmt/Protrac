@@ -144,6 +144,22 @@ class OrderProductionReportSerializer(serializers.Serializer):
         default=False,
         help_text="True when a 'Mark as Complete' button should be shown for this row",
     )
+    is_pending_transition = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="True when this is an old style pending output while a newer style is active on the line",
+    )
+    pending_quantity = serializers.IntegerField(
+        required=False,
+        default=0,
+        help_text="Cumulative input minus cumulative output (pieces still to be output)",
+    )
+    remarks = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Human-readable status/warning for the row (pending transition, manual completion, etc.)",
+    )
 
 
 class ProductionLineReportSerializer(serializers.Serializer):

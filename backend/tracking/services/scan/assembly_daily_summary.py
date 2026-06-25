@@ -67,14 +67,12 @@ def get_assembly_daily_summary(
     if summary_date is None:
         summary_date = timezone.localdate()
 
-    # Orders manually marked complete on this line are hidden from the summary.
-    from tracking.models import LineStyleCompletion
+    # Styles hidden in the Daily Production Report (manual completion OR fully
+    # output) are hidden from the assembly summary too, via the shared
+    # line-visibility source of truth.
+    from tracking.services.line_visibility import get_hidden_order_ids_for_line
 
-    completed_order_ids = list(
-        LineStyleCompletion.objects.filter(production_line=line).values_list(
-            "order_id", flat=True
-        )
-    )
+    completed_order_ids = list(get_hidden_order_ids_for_line(line, as_of_date=summary_date))
 
     # --- Garment issues today (line-wide) ---
     garment_issue_qs = (
