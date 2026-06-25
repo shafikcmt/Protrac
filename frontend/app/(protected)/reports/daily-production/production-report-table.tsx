@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { MoreHorizontal, CheckCircle2 } from "lucide-react";
+import { MoreHorizontal, CheckCircle2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   Table,
@@ -38,6 +38,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { markStyleComplete } from "@/hooks/api/use-line-style-completion";
 
 interface ProductionReportTableProps {
@@ -521,17 +526,19 @@ export function ProductionReportTable({
 
                           <TableCell className="text-xs">
                             {order.is_pending_transition && (
-                              <div className="mb-1 space-y-0.5">
-                                <Badge
-                                  variant="outline"
-                                  className="border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                                >
-                                  Pending: {formatNumber(order.pending_quantity || 0)} pcs
-                                </Badge>
-                                <p className="text-[11px] leading-tight text-amber-700 dark:text-amber-400">
-                                  {order.remarks || "New style started on this line"}
-                                </p>
-                              </div>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="mb-1 inline-flex w-fit cursor-default items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium leading-none text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                                    Pending {formatNumber(order.pending_quantity || 0)} pcs
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[260px]">
+                                  {order.remarks
+                                    ? order.remarks.replace(/\s*\|\s*/g, " · ")
+                                    : "New style started on this line · Manual completion required"}
+                                </TooltipContent>
+                              </Tooltip>
                             )}
                             {order.needs_manual_complete && (
                               <DropdownMenu>
