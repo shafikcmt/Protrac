@@ -268,6 +268,9 @@ export function ProductionReportTable({
                   Output
                 </TableHead>
                 <TableHead className="text-center" colSpan={2}>
+                  Efficiency %
+                </TableHead>
+                <TableHead className="text-center" colSpan={2}>
                   DHU %
                 </TableHead>
                 <TableHead className="text-center" colSpan={2}>
@@ -306,6 +309,9 @@ export function ProductionReportTable({
 
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Cumm</TableHead>
+
+                <TableHead className="text-xs text-right">Day</TableHead>
+                <TableHead className="text-xs text-right">Avg</TableHead>
 
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Avg</TableHead>
@@ -504,6 +510,25 @@ export function ProductionReportTable({
                           </TableCell>
 
                           <TableCell className="text-right text-xs">
+                            {formatPercentage(
+                              Number(order.input) > 0
+                                ? (Number(order.output?.day || 0) /
+                                    Number(order.input)) *
+                                    100
+                                : 0
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right text-xs">
+                            {formatPercentage(
+                              Number(order.input) > 0
+                                ? (Number(order.output?.cumulative || 0) /
+                                    Number(order.input)) *
+                                    100
+                                : 0
+                            )}
+                          </TableCell>
+
+                          <TableCell className="text-right text-xs">
                             {formatPercentage(order.dhu_day || 0)}
                           </TableCell>
                           <TableCell className="text-right text-xs">
@@ -528,15 +553,19 @@ export function ProductionReportTable({
                             {order.is_pending_transition && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="mb-1 inline-flex w-fit cursor-default items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium leading-none text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                                    <AlertTriangle className="h-3 w-3 shrink-0" />
-                                    Pending {formatNumber(order.pending_quantity || 0)} pcs
+                                  <span className="mb-1 inline-flex w-fit cursor-default items-center text-amber-600 dark:text-amber-400">
+                                    <AlertTriangle className="h-4 w-4 shrink-0" />
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-[260px]">
-                                  {order.remarks
-                                    ? order.remarks.replace(/\s*\|\s*/g, " · ")
-                                    : "New style started on this line · Manual completion required"}
+                                  <div className="font-medium">
+                                    Pending {formatNumber(order.pending_quantity || 0)} pcs
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    {order.remarks
+                                      ? order.remarks.replace(/\s*\|\s*/g, " · ")
+                                      : "New style started on this line · Manual completion required"}
+                                  </div>
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -610,6 +639,8 @@ export function ProductionReportTable({
                         )
                       )}
                     </TableCell>
+
+                    <TableCell colSpan={2} />
 
                     <TableCell colSpan={7} />
                   </TableRow>

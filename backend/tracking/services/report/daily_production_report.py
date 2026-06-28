@@ -683,16 +683,27 @@ def _build_order_row(
     if cumulative_activity == 0:
         return None
 
+    # Past-date reports must show only the styles that were actually active *on*
+    # the selected date — i.e. had real input or output that day. Without this a
+    # style that was merely in-progress (cumulative activity) on an earlier date
+    # would leak into the report and mix records from multiple dates. Today's
+    # report keeps its cumulative/in-progress view unchanged.
+    if report_date != today():
+        daily_input = _calc_input_value(order, input_part_totals, "day")
+        daily_output = int(output.get("day", 0) or 0)
+        if daily_input <= 0 and daily_output <= 0:
+            return None
+
     is_active_order = oid == active_order_id
     pending_qty = _pending_quantity(cumulative_input, cumulative_output)
 
-    # A pending old style: a newer *different* style is active on this line and
-    # this older style still has un-output pieces (input != output). Sibling
-    # sizes/colors of the active style share its style id and are not flagged.
+    # Pending alert only for the live (today) report: a style that has started
+    # on this line (has input) but produced no output yet. Never shown for
+    # past/historical dates.
     is_pending_transition = bool(
-        active_style_id is not None
-        and getattr(order, "style_id", None) != active_style_id
-        and pending_qty > 0
+        report_date == today()
+        and cumulative_input > 0
+        and cumulative_output == 0
     )
 
     # "Mark Complete" is offered for a pending old style on the live (today)
@@ -707,10 +718,9 @@ def _build_order_row(
     remarks_parts: List[str] = []
     if is_pending_transition:
         remarks_parts.append(
-            f"Old style pending: input {cumulative_input}, "
+            f"Started but no output yet: input {cumulative_input}, "
             f"output {cumulative_output}, pending {pending_qty} pcs"
         )
-        remarks_parts.append("New style started on this line")
         if needs_manual_complete:
             remarks_parts.append("Manual completion required")
     remarks = " | ".join(remarks_parts)
