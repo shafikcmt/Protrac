@@ -63,7 +63,13 @@ def _apply_active_only_by_delivery(
     if not active_only:
         return qs
 
-    return qs.filter(**{f"{delivery_field_path}__gt": cutoff_date})
+    # Null delivery_date = no deadline entered yet → treat as still-active
+    # (include it). Only orders whose delivery_date has clearly passed
+    # (<= cutoff) are excluded as finished/delivered.
+    return qs.filter(
+        Q(**{f"{delivery_field_path}__isnull": True})
+        | Q(**{f"{delivery_field_path}__gt": cutoff_date})
+    )
 
 
 def _normalize_part_name(name: str) -> str:
