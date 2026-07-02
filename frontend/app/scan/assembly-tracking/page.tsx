@@ -43,8 +43,10 @@ export default function AssemblyTrackingScannerPage() {
           onClear={resetScanResult}
         />
 
-        {/* Today's summary — shown once a scan has succeeded */}
-        {lastScanResult?.success && <AssemblyDailySummary />}
+        {/* Today's summary — ALWAYS visible for a valid assembly-tracking user.
+            The component renders its own loading skeleton, data, or a visible
+            error/empty message, so it must never be gated behind a scan. */}
+        <AssemblyDailySummary />
       </div>
 
       {/* Right Column - Assembly Tracking Info (2/3) */}
