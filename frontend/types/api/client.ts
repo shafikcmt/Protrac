@@ -67,7 +67,7 @@ const AssemblyDailySummaryResponse = z
     parts_issued_count: z.number().int(),
     parts_total_count: z.number().int(),
     recent_garments: z.array(DailySummaryGarment),
-    hourly: z.array(DailySummaryHour).optional().default([]),
+    hourly: z.array(DailySummaryHour),
   })
   .passthrough();
 const BundleStatusEnum = z.enum(["created", "issued_to_sewing", "completed"]);
@@ -610,7 +610,7 @@ const OrderProductionReport = z
     color: z.string().nullish(),
     order_quantity: z.number().int(),
     working_days: z.number().int(),
-    working_hours: z.number(),
+    working_hours: z.number().nullish(),
     input: z.number().int(),
     front: PartProduction.optional(),
     back: PartProduction.optional(),
@@ -625,6 +625,9 @@ const OrderProductionReport = z
     inspection: DayAndCumulative,
     packed: DayAndCumulative,
     needs_manual_complete: z.boolean().optional().default(false),
+    is_pending_transition: z.boolean().optional().default(false),
+    pending_quantity: z.number().int().optional().default(0),
+    remarks: z.string().optional().default(""),
     is_hidden: z.boolean().optional().default(false),
     completion_id: z.number().int().nullish(),
   })
@@ -1102,6 +1105,15 @@ const PatchedSpreadRequest = z
   .object({ number: z.string().min(1).max(20) })
   .partial()
   .passthrough();
+const OverviewStats = z
+  .object({
+    total_orders: z.number().int(),
+    total_styles: z.number().int(),
+    total_bundles: z.number().int(),
+    completed_bundles: z.number().int(),
+    completion_rate: z.number(),
+  })
+  .passthrough();
 const PartDetail = z
   .object({ id: z.number().int(), name: z.string() })
   .passthrough();
@@ -1171,6 +1183,7 @@ export const schemas = {
   Message,
   DailySummaryPart,
   DailySummaryGarment,
+  DailySummaryHour,
   AssemblyDailySummaryResponse,
   BundleStatusEnum,
   Bundle,
@@ -1288,6 +1301,7 @@ export const schemas = {
   PaginatedSpreadList,
   SpreadRequest,
   PatchedSpreadRequest,
+  OverviewStats,
   PartDetail,
   StyleWithParts,
   PaginatedStyleWithPartsList,
@@ -3635,6 +3649,20 @@ Exports: hour, dhu, defects, remarks, defect_breakdown`,
       },
     ],
     response: z.void(),
+  },
+  {
+    method: "get",
+    path: "/api/tracking/stats/overview/",
+    alias: "tracking_stats_overview_retrieve",
+    description: `Return aggregate counts only.
+
+The Overview dashboard previously fetched the full &#x60;&#x60;orders&#x60;&#x60;/&#x60;&#x60;styles&#x60;&#x60;/
+&#x60;&#x60;bundles&#x60;&#x60; lists just to read their &#x60;&#x60;count&#x60;&#x60;. With &#x60;&#x60;PAGE_SIZE&#x60;&#x60; set very
+high those endpoints serialize the entire table (multi-MB, ~24s for
+bundles), which left the dashboard stuck on &quot;Loading...&quot;. This endpoint runs
+plain &#x60;&#x60;COUNT(*)&#x60;&#x60; queries instead so the page loads instantly.`,
+    requestFormat: "json",
+    response: OverviewStats,
   },
   {
     method: "get",
