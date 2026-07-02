@@ -96,7 +96,7 @@ export function ProductionReportTable({
         });
       }
       toast.success(
-        `${pendingCompletion.styleName} on ${pendingCompletion.lineName} hidden from dashboards`
+        `${pendingCompletion.styleName} on ${pendingCompletion.lineName} marked complete`
       );
       refetch?.();
     } catch (e: any) {
@@ -113,7 +113,7 @@ export function ProductionReportTable({
         await undoComplete.mutateAsync(id);
       }
       toast.success(
-        `${pendingUnhide.styleName} on ${pendingUnhide.lineName} is visible again`
+        `${pendingUnhide.styleName} on ${pendingUnhide.lineName} marked active`
       );
       refetch?.();
     } catch (e: any) {
@@ -662,7 +662,7 @@ export function ProductionReportTable({
                                     }
                                   >
                                     <Eye className="h-4 w-4" />
-                                    Unhide
+                                    Mark as Active
                                   </Button>
                                 </div>
                               ) : (
@@ -688,7 +688,7 @@ export function ProductionReportTable({
                                       }
                                     >
                                       <EyeOff className="mr-2 h-4 w-4" />
-                                      Hide from dashboards
+                                      Mark Complete
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
@@ -818,15 +818,17 @@ export function ProductionReportTable({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Hide this line / style?</AlertDialogTitle>
+          <AlertDialogTitle>Mark this line / style as complete?</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div>
               <p>
-                This will hide{" "}
+                This will mark{" "}
                 <strong>{pendingCompletion?.styleName}</strong> on{" "}
-                <strong>{pendingCompletion?.lineName}</strong> from this report,
-                the sewing v3 kiosk and the assembly-tracking screen. No
-                production data is deleted — you can unhide it at any time.
+                <strong>{pendingCompletion?.lineName}</strong> as complete. It
+                will be excluded from Daily Report, Assembly Tracking, and
+                Sewing Dashboard totals, but will remain visible on Heatmap and
+                Finishing Dashboard until its delivery date passes. This can be
+                undone anytime.
               </p>
               {(pendingCompletion?.items?.length ?? 0) > 1 && (
                 <ul className="mt-2 list-disc pl-4 text-sm space-y-1">
@@ -843,7 +845,7 @@ export function ProductionReportTable({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isCompleting}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={handleMarkComplete} disabled={isCompleting}>
-            {isCompleting ? "Hiding…" : "Hide"}
+            {isCompleting ? "Marking…" : "Mark Complete"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -857,18 +859,18 @@ export function ProductionReportTable({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Unhide this line / style?</AlertDialogTitle>
+          <AlertDialogTitle>Mark this line / style as active?</AlertDialogTitle>
           <AlertDialogDescription>
             This will bring{" "}
             <strong>{pendingUnhide?.styleName}</strong> on{" "}
-            <strong>{pendingUnhide?.lineName}</strong> back to this report, the
-            sewing v3 kiosk and the assembly-tracking screen.
+            <strong>{pendingUnhide?.lineName}</strong> back into Daily Report,
+            Assembly Tracking, and Sewing Dashboard totals.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isUnhiding}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={handleUnhide} disabled={isUnhiding}>
-            {isUnhiding ? "Unhiding…" : "Unhide"}
+            {isUnhiding ? "Updating…" : "Mark as Active"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
