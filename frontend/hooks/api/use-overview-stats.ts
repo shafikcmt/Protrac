@@ -1,106 +1,66 @@
 "use client";
 
-import { apiHooks } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { useAuthStore } from "@/store/auth";
 
-// Hook to get orders count and stats
-export function useOrdersStats() {
-  const query = apiHooks.useGet(
-    "/api/tracking/orders/",
-    { queries: { page: 1 } },
-    {
-      refetchInterval: 60000, // Refresh every minute
-      staleTime: 30000, // Cache for 30 seconds
-    }
-  );
+// Lightweight dashboard counts. Previously the Overview page fetched the full
+// orders/styles/bundles lists just to read their `count`, which downloaded
+// multi-MB payloads and took ~24s per bundles request (PAGE_SIZE is very high),
+// leaving the cards stuck on "Loading...". This hook hits a dedicated
+// count-only endpoint instead.
 
-  return {
-    data: query.data ? { total: query.data.count } : undefined,
-    isLoading: query.isLoading,
-    error: query.error,
-    refetch: query.refetch,
-  };
+interface OverviewStatsResponse {
+  total_orders: number;
+  total_styles: number;
+  total_bundles: number;
+  completed_bundles: number;
+  completion_rate: number;
 }
 
-// Hook to get styles count
-export function useStylesStats() {
-  const query = apiHooks.useGet(
-    "/api/tracking/styles/",
-    { queries: { page: 1 } },
+const getBackendApiBaseUrl = () =>
+  process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, "") ??
+  "http://192.168.245.25:8000";
+
+async function fetchOverviewStats(): Promise<OverviewStatsResponse> {
+  const token = useAuthStore.getState().tokens?.access;
+
+  const res = await fetch(
+    `${getBackendApiBaseUrl()}/api/tracking/stats/overview/`,
     {
-      refetchInterval: 300000, // Refresh every 5 minutes (styles change less frequently)
-      staleTime: 30000,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     }
   );
 
-  return {
-    data: query.data ? { total: query.data.count } : undefined,
-    isLoading: query.isLoading,
-    error: query.error,
-    refetch: query.refetch,
-  };
+  if (!res.ok) {
+    throw new Error(`Failed to load overview stats (HTTP ${res.status})`);
+  }
+
+  return res.json();
 }
 
-// Hook to get bundles stats
-export function useBundlesStats() {
-  // Get total bundles
-  const allBundlesQuery = apiHooks.useGet(
-    "/api/tracking/bundles/",
-    { queries: { page: 1 } },
-    {
-      refetchInterval: 30000, // Refresh every 30 seconds
-      staleTime: 15000, // Cache for 15 seconds
-    }
-  );
-
-  // Get completed bundles
-  const completedBundlesQuery = apiHooks.useGet(
-    "/api/tracking/bundles/",
-    {
-      queries: { page: 1, status: "completed" },
-    },
-    {
-      refetchInterval: 30000,
-      staleTime: 15000,
-    }
-  );
-
-  const total = allBundlesQuery.data?.count ?? 0;
-  const completed = completedBundlesQuery.data?.count ?? 0;
-  const completionRate = total > 0 ? (completed / total) * 100 : 0;
-
-  return {
-    data: {
-      total,
-      completed,
-      inProgress: total - completed, // Approximation
-      completionRate,
-    },
-    isLoading: allBundlesQuery.isLoading || completedBundlesQuery.isLoading,
-    error: allBundlesQuery.error || completedBundlesQuery.error,
-    refetch: () => {
-      allBundlesQuery.refetch();
-      completedBundlesQuery.refetch();
-    },
-  };
-}
-
-// Hook to get overall dashboard stats (combines multiple endpoints)
 export function useOverviewStats() {
-  const ordersQuery = useOrdersStats();
-  const stylesQuery = useStylesStats();
-  const bundlesQuery = useBundlesStats();
+  const query = useQuery({
+    queryKey: ["overview-stats"],
+    queryFn: fetchOverviewStats,
+    refetchInterval: 60000, // Refresh every minute
+    staleTime: 30000,
+  });
+
+  const data = query.data;
 
   return {
-    orders: ordersQuery.data,
-    styles: stylesQuery.data,
-    bundles: bundlesQuery.data,
-    isLoading:
-      ordersQuery.isLoading || stylesQuery.isLoading || bundlesQuery.isLoading,
-    error: ordersQuery.error || stylesQuery.error || bundlesQuery.error,
-    refetch: () => {
-      ordersQuery.refetch();
-      stylesQuery.refetch();
-      bundlesQuery.refetch();
-    },
+    orders: data ? { total: data.total_orders } : undefined,
+    styles: data ? { total: data.total_styles } : undefined,
+    bundles: data
+      ? {
+          total: data.total_bundles,
+          completed: data.completed_bundles,
+          inProgress: data.total_bundles - data.completed_bundles,
+          completionRate: data.completion_rate,
+        }
+      : undefined,
+    isLoading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch,
   };
 }

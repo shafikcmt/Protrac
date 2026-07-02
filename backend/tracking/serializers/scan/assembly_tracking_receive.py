@@ -43,6 +43,7 @@ class PartInventoryItemSerializer(serializers.Serializer):
     size = serializers.CharField()
     color = serializers.CharField()
     part = serializers.CharField()
+    order_quantity = serializers.IntegerField()
     total_quantity = serializers.IntegerField()
     issued_quantity = serializers.IntegerField()
     available_quantity = serializers.IntegerField()

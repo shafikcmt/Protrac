@@ -19,6 +19,12 @@ from .assembly_tracking_issue import (  # noqa
     AssemblyTrackingIssueInfoResponseSerializer,
     AssemblyTrackingIssueInfoFilterSerializer,
 )
+from .assembly_daily_summary import (  # noqa
+    DailySummaryFilterSerializer,
+    DailySummaryPartSerializer,
+    DailySummaryGarmentSerializer,
+    AssemblyDailySummaryResponseSerializer,
+)
 from .sewing_qc import (  # noqa
     SewingQCScanSerializer,
     SewingQCScanResponseSerializer,

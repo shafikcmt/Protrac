@@ -98,9 +98,9 @@ export default function FinishingKioskPage() {
         <button
           onClick={toggleMode}
           className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors",
+            "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95",
             tvMode
-              ? "bg-blue-600 text-white hover:bg-blue-700"
+              ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-sm shadow-blue-500/30 hover:shadow-md hover:shadow-blue-500/40"
               : "bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-200 hover:bg-gray-300 dark:hover:bg-slate-600"
           )}
         >
@@ -108,7 +108,8 @@ export default function FinishingKioskPage() {
           {tvMode ? "TV Mode" : "Manage Mode"}
         </button>
 
-        <span className="text-xs text-gray-400 dark:text-slate-500">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-slate-400 rounded-full bg-white dark:bg-slate-800/80 ring-1 ring-inset ring-gray-200 dark:ring-slate-700 px-3 py-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
           {groups.length} order{groups.length !== 1 ? "s" : ""}
           {tvMode && groups.length > 3 && ` · ${slideCount} slides`}
         </span>

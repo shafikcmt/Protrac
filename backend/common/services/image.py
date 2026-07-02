@@ -5,7 +5,7 @@ from PIL import Image
 from django.conf import settings
 from typing import Optional, Tuple
 from django.core.files.base import ContentFile
-import pillow_avif  # noqa (Required for AVIF support)
+# import pillow_avif  # noqa (disabled - not supported on Alpine)
 
 
 logger = logging.getLogger(__name__)

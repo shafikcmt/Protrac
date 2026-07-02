@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
 
 export interface LineStyleCompletionRecord {
@@ -86,4 +86,40 @@ export async function undoStyleComplete(id: number): Promise<void> {
     const text = await res.text();
     throw new Error(text || `HTTP ${res.status}`);
   }
+}
+
+/**
+ * Invalidate every query affected by a hide/unhide so all Group A surfaces
+ * (Daily Production Report, sewing v3 kiosk, assembly-tracking scan) refresh.
+ * The completions list is invalidated explicitly; a broad invalidate covers the
+ * zodios-managed report/kiosk queries without hard-coding their internal keys.
+ */
+function useCompletionInvalidation() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: ["line-style-completions"] });
+    queryClient.invalidateQueries();
+  };
+}
+
+/** Mark a line+style as complete (hidden). Handles cache invalidation. */
+export function useMarkStyleComplete() {
+  const invalidate = useCompletionInvalidation();
+  return useMutation({
+    mutationFn: (vars: {
+      production_line: number;
+      order: number;
+      notes?: string;
+    }) => markStyleComplete(vars.production_line, vars.order, vars.notes),
+    onSuccess: invalidate,
+  });
+}
+
+/** Undo a manual completion (unhide). Handles cache invalidation. */
+export function useUndoStyleComplete() {
+  const invalidate = useCompletionInvalidation();
+  return useMutation({
+    mutationFn: (id: number) => undoStyleComplete(id),
+    onSuccess: invalidate,
+  });
 }

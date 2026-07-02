@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, Download, ChevronDown, ChevronUp, Undo2 } from "lucide-react";
+import {
+  RefreshCw,
+  Download,
+  ChevronDown,
+  ChevronUp,
+  Undo2,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppHeader, AppContent, type BreadcrumbItem } from "@/components/app/app-layout";
 import { Button } from "@/components/ui/button";
@@ -64,6 +72,7 @@ export default function DailyProductionPage() {
   });
 
   const [showRefreshIndicator, setShowRefreshIndicator] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const [showUndoPanel, setShowUndoPanel] = useState(false);
   const [undoTarget, setUndoTarget] = useState<LineStyleCompletionRecord | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
@@ -102,6 +111,7 @@ export default function DailyProductionPage() {
     sizes: filters.sizes,
     style_id: filters.style_id,
     style_ids: filters.style_ids,
+    include_hidden: showHidden,
   });
 
   const completionsQuery = useLineStyleCompletions();
@@ -258,6 +268,20 @@ export default function DailyProductionPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant={showHidden ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setShowHidden((v) => !v)}
+                className="gap-2"
+                title="Show or hide manually-completed (hidden) line/style rows"
+              >
+                {showHidden ? (
+                  <Eye className="h-4 w-4" />
+                ) : (
+                  <EyeOff className="h-4 w-4" />
+                )}
+                {showHidden ? "Showing Hidden" : "Show Hidden"}
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

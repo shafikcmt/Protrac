@@ -62,6 +62,14 @@ class DailyProductionReportFilterSerializer(serializers.Serializer):
         help_text="Filter by multiple colors"
     )
 
+    include_hidden = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="When true, manually-completed (hidden) rows are returned too, "
+        "flagged is_hidden, so the UI can show and unhide them. Hidden rows are "
+        "always excluded from summary totals.",
+    )
+
 
 class DayAndCumulativeSerializer(serializers.Serializer):
     """Serializer for day and cumulative counts."""
@@ -105,7 +113,11 @@ class OrderProductionReportSerializer(serializers.Serializer):
     working_days = serializers.IntegerField(
         help_text="Working days for this production"
     )
-    working_hours = serializers.FloatField(help_text="Working hours for the day")
+    working_hours = serializers.FloatField(
+        allow_null=True,
+        required=False,
+        help_text="Working hours for the day (from the line target; null if unset)",
+    )
     input = serializers.IntegerField(
         help_text="Garments entering production on this day"
     )
@@ -159,6 +171,16 @@ class OrderProductionReportSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
         help_text="Human-readable status/warning for the row (pending transition, manual completion, etc.)",
+    )
+    is_hidden = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="True when this row is manually-completed (hidden) and only shown because include_hidden was requested",
+    )
+    completion_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="LineStyleCompletion id for a hidden row (used by the Unhide action); null otherwise",
     )
 
 

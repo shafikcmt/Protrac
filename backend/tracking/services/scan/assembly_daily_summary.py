@@ -134,6 +134,45 @@ def get_assembly_daily_summary(
             if issued_today > 0:
                 parts_issued_count += 1
 
+    # --- Hourly: bundles received vs garments assembly-complete ---
+    # Buckets use the exact same shift anchor + break-skip rule as the sewing v3
+    # dashboard (via hourly_buckets, which reuses that logic), so H1..Hn line up
+    # across surfaces. Both querysets already exclude hidden/completed orders.
+    from tracking.services import hourly_buckets as hb
+
+    # A line with no daily target for the date has no defined shift/hour grid, so
+    # the hourly block is left empty (matches the sewing v3 dashboard, whose hourly
+    # tables also return nothing without a LineTarget). The UI shows a "no daily
+    # target" fallback in that case rather than an arbitrary grid.
+    line_target = hb.get_line_target(line, summary_date)
+    hourly: list = []
+    if line_target is not None:
+        hour_count = hb.hour_count_for(line_target)
+        target_per_hour = hb.per_hour_target(line_target)
+
+        bundle_counts = hb.bucket_timestamps(
+            part_receive_qs.values_list("created_at", flat=True),
+            line,
+            summary_date,
+            line_target=line_target,
+        )
+        assembly_counts = hb.bucket_timestamps(
+            garment_issue_qs.values_list("created_at", flat=True),
+            line,
+            summary_date,
+            line_target=line_target,
+        )
+
+        hourly = [
+            {
+                "hour": h + 1,
+                "target": target_per_hour,
+                "bundles_received": bundle_counts[h],
+                "assembly_complete": assembly_counts[h],
+            }
+            for h in range(hour_count)
+        ]
+
     return {
         "line": line.name,
         "date": summary_date.isoformat(),
@@ -143,4 +182,5 @@ def get_assembly_daily_summary(
         "parts_issued_count": parts_issued_count,
         "parts_total_count": parts_total_count,
         "recent_garments": recent_garments,
+        "hourly": hourly,
     }

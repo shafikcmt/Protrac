@@ -95,12 +95,16 @@ export const useAssemblyTrackingScanner = () => {
   const submitScan = (data: ScanRequest) => {
     const trackingCode = data.tracking_code.trim();
 
+    // Send the trimmed code — barcode scanners often append trailing
+    // whitespace/newline, which would otherwise fail backend lookup (400).
+    const payload = { ...data, tracking_code: trackingCode };
+
     // If tracking code starts with "3", route to garment-issue-for-assembly
     if (trackingCode.startsWith("3")) {
-      garmentIssueMutation.mutate(data);
+      garmentIssueMutation.mutate(payload);
     } else {
       // Otherwise, route to assembly-part-receive
-      assemblyPartReceiveMutation.mutate(data);
+      assemblyPartReceiveMutation.mutate(payload);
     }
   };
 

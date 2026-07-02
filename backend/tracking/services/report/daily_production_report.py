@@ -17,6 +17,7 @@ from tracking.models import (
     PartInventory,
     QualityCheck,
     LineStyleCompletion,
+    LineTarget,
 )
 from tracking.models.constants import LineType, GarmentStatus
 from tracking.models.constants import QualityCheckStatus
@@ -124,6 +125,7 @@ def get_daily_production_report_data(
     sizes: Optional[List[str]] = None,
     colors: Optional[List[str]] = None,
     active_only: bool = True,
+    include_hidden: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Generate daily production report data for all sewing lines.
@@ -131,6 +133,10 @@ def get_daily_production_report_data(
     Behavior:
       - Today's report   -> expired/null delivery orders hidden
       - Past date report -> all matching orders shown
+      - include_hidden   -> manually-completed (hidden) rows are returned too,
+        flagged with is_hidden=True and their completion_id so the UI can offer
+        an "Unhide" action. Hidden rows are always excluded from summary totals
+        (see api._generate_summary), regardless of this flag.
 
     Performance: metrics are bulk-aggregated per line (a handful of grouped
     queries each) instead of issuing per-order / per-part queries, removing the
@@ -268,12 +274,34 @@ def get_daily_production_report_data(
             line, as_of_date=report_date
         ) & set(order_ids_on_line)
 
+        # When the caller asks to reveal hidden rows, map each manually-completed
+        # order on this line to its LineStyleCompletion id so the row can carry a
+        # completion_id (used by the UI's "Unhide" action). Mirrors the as-of-date
+        # guard used by get_manual_completed_order_ids so history is not rewritten.
+        completion_id_by_order: Dict[int, int] = {}
+        if include_hidden and completed_order_ids:
+            comp_qs = LineStyleCompletion.objects.filter(
+                production_line=line, order_id__in=completed_order_ids
+            )
+            if report_date is not None:
+                comp_qs = comp_qs.filter(created_at__date__lte=report_date)
+            completion_id_by_order = dict(comp_qs.values_list("order_id", "id"))
+
         # Style of the currently-active order. A "pending transition" is only a
         # *different style* still finishing while this newer style runs — sibling
         # sizes/colors of the active style are part of the same active run and
         # must not be flagged.
         active_style_id = next(
             (o.style_id for o in line_orders if o.id == active_order_id), None
+        )
+
+        # Work hours come from the line's target for the selected date. When no
+        # target is configured the Hrs column shows "-" (None here), rather than
+        # a misleading hardcoded default.
+        line_work_hours = (
+            LineTarget.objects.filter(line=line, date=report_date)
+            .values_list("work_hours", flat=True)
+            .first()
         )
 
         metrics = _aggregate_line_metrics(
@@ -301,6 +329,9 @@ def get_daily_production_report_data(
                 active_style_id=active_style_id,
                 completed_order_ids=completed_order_ids,
                 metrics=metrics,
+                line_work_hours=line_work_hours,
+                include_hidden=include_hidden,
+                completion_id_by_order=completion_id_by_order,
             )
             if order_data:
                 line_report["orders"].append(order_data)
@@ -595,6 +626,9 @@ def _build_order_row(
     active_style_id: Optional[int],
     completed_order_ids: set,
     metrics: Dict[str, Dict[int, Any]],
+    line_work_hours: Optional[int] = None,
+    include_hidden: bool = False,
+    completion_id_by_order: Optional[Dict[int, int]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Assemble a single order's report row from preloaded line metrics."""
 
@@ -609,7 +643,13 @@ def _build_order_row(
     # Manual completion hides the style on this line for the selected date and
     # everything after it (completed_order_ids is already scoped to completions
     # made on or before report_date). Applies to past-date reports too.
-    if oid in completed_order_ids:
+    #
+    # When include_hidden is set, the row is still built but flagged is_hidden so
+    # the UI can render it greyed-out with an "Unhide" action. Such rows bypass
+    # the "completeness" drops below (fully-output / fully-packed) so a hidden
+    # style is always revealed; they are excluded from summary totals by the API.
+    is_hidden = oid in completed_order_ids
+    if is_hidden and not include_hidden:
         return None
 
     has_bundle_activity = oid in metrics["bundle_activity"]
@@ -629,7 +669,7 @@ def _build_order_row(
     # selected date). This removes duplicate sewing-line rows once the old
     # style is finished, and makes past-date reports hide styles that were
     # already complete before the selected date.
-    if is_style_complete(cumulative_input, cumulative_output):
+    if is_style_complete(cumulative_input, cumulative_output) and not is_hidden:
         return None
 
     # --- Parts production keyed by style part name ---
@@ -662,7 +702,7 @@ def _build_order_row(
     )
 
     packed_cumulative = int(packed.get("cumulative", 0) or 0)
-    if packed_cumulative >= (order.quantity or 0):
+    if packed_cumulative >= (order.quantity or 0) and not is_hidden:
         return None
 
     assembly_cumulative = int(assembly.get("cumulative", 0) or 0)
@@ -695,15 +735,20 @@ def _build_order_row(
             return None
 
     is_active_order = oid == active_order_id
-    pending_qty = _pending_quantity(cumulative_input, cumulative_output)
+    # Remaining pieces still to be produced for this order, measured against the
+    # ordered quantity (never negative).
+    pending_qty = max(int(order.quantity or 0) - cumulative_output, 0)
 
-    # Pending alert only for the live (today) report: a style that has started
-    # on this line (has input) but produced no output yet. Never shown for
-    # past/historical dates.
+    # Pending alert (today only): this is an OLDER style on a line where a newer
+    # style is now the active run (most recently issued bundle), and this older
+    # style still has unfinished pieces. The newest/active style is never
+    # flagged; sibling sizes/colors of the active style share its style id and
+    # are also not flagged.
     is_pending_transition = bool(
         report_date == today()
-        and cumulative_input > 0
-        and cumulative_output == 0
+        and active_style_id is not None
+        and getattr(order, "style_id", None) != active_style_id
+        and pending_qty > 0
     )
 
     # "Mark Complete" is offered for a pending old style on the live (today)
@@ -711,6 +756,7 @@ def _build_order_row(
     needs_manual_complete = bool(
         is_pending_transition
         and active_only
+        and not is_hidden
         and getattr(order, "delivery_date", None) is not None
         and order.delivery_date > report_date
     )
@@ -718,9 +764,10 @@ def _build_order_row(
     remarks_parts: List[str] = []
     if is_pending_transition:
         remarks_parts.append(
-            f"Started but no output yet: input {cumulative_input}, "
+            f"Old style pending: order qty {order.quantity or 0}, "
             f"output {cumulative_output}, pending {pending_qty} pcs"
         )
+        remarks_parts.append("Newer style started on this line")
         if needs_manual_complete:
             remarks_parts.append("Manual completion required")
     remarks = " | ".join(remarks_parts)
@@ -739,7 +786,9 @@ def _build_order_row(
         "color": getattr(getattr(order, "color", None), "name", None),
         "order_quantity": order.quantity,
         "delivery_date": getattr(order, "delivery_date", None),
-        "working_hours": 8.0,
+        "working_hours": (
+            float(line_work_hours) if line_work_hours is not None else None
+        ),
         "working_days": max(metrics["working_days"].get(oid, 0), 1),
         "input": cumulative_input,
         **parts_data,
@@ -765,6 +814,10 @@ def _build_order_row(
         "is_pending_transition": is_pending_transition,
         "pending_quantity": pending_qty,
         "remarks": remarks,
+        "is_hidden": is_hidden,
+        "completion_id": (
+            (completion_id_by_order or {}).get(oid) if is_hidden else None
+        ),
     }
 
     return result

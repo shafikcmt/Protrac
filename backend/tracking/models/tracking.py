@@ -114,6 +114,7 @@ class Order(BaseModel):
             models.Index(fields=["order_number"]),
             models.Index(fields=["production_cutting_date"]),
             models.Index(fields=["style"]),
+            models.Index(fields=["delivery_date"], name="order_delivery_date_idx"),
         ]
 
     def __str__(self):
@@ -333,6 +334,18 @@ class Bundle(BaseModel):
         indexes = [
             models.Index(fields=["spread", "bundle_number_in_spread"]),
             models.Index(fields=["order", "part"]),
+            # Daily Production Report: active-order lookup (latest issued bundle
+            # per sewing line). Partial + descending to match the query plan.
+            models.Index(
+                fields=["assigned_sewing_line", "-issued_at", "order"],
+                condition=models.Q(issued_at__isnull=False),
+                name="bundle_active_order_idx",
+            ),
+            # Daily Production Report: per-line bundle aggregations by order.
+            models.Index(
+                fields=["assigned_sewing_line", "order"],
+                name="bundle_assigned_order_idx",
+            ),
         ]
 
     @property
@@ -482,6 +495,11 @@ class Garment(BaseModel):
         ordering = ["order", "sequence_number"]
         indexes = [
             models.Index(fields=["order", "bundle_set_number"]),
+            # Daily Production Report: per-line garment aggregations by order.
+            models.Index(
+                fields=["sewing_line", "order"],
+                name="garment_sewing_order_idx",
+            ),
         ]
 
     @property

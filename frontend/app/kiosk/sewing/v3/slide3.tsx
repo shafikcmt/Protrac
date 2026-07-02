@@ -1,7 +1,17 @@
 "use client";
 
 import * as React from "react";
+import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/* Cohesive jewel-tone accent set shared across both quality/WIP slides */
+const ACCENT = {
+  indigo: "#6366f1",
+  violet: "#8b5cf6",
+  rose: "#f43f5e",
+  cyan: "#22d3ee",
+  emerald: "#10b981",
+} as const;
 
 type DefectBreakdownItem = { code: string; name?: string; description?: string; qty: number };
 type QualityDetailLine = { lineId: number; lineName: string; defects: DefectBreakdownItem[] };
@@ -30,25 +40,22 @@ function useMediaQuery(query: string) {
   return matches;
 }
 
-const dhuTone = (dhu: number) => {
-  if (dhu <= 0)
-    return {
-      pill: "border-emerald-400/60 bg-emerald-500/20",
-      text: "text-emerald-300",
-      glow: "shadow-[0_0_14px_rgba(16,185,129,0.55),0_0_4px_rgba(16,185,129,0.3)]",
-    };
-  if (dhu <= 3)
-    return {
-      pill: "border-amber-400/60 bg-amber-500/20",
-      text: "text-amber-300",
-      glow: "shadow-[0_0_14px_rgba(245,158,11,0.65),0_0_4px_rgba(245,158,11,0.4)]",
-    };
-  return {
-    pill: "border-rose-400/60 bg-rose-500/20",
-    text: "text-rose-300",
-    glow: "shadow-[0_0_14px_rgba(244,63,94,0.65),0_0_4px_rgba(244,63,94,0.4)]",
-  };
+const dhuBarColor = (dhu: number) => {
+  if (dhu <= 0) return "#22c55e";
+  if (dhu < 3) return "#facc15";
+  return "#ef4444";
 };
+
+const dhuBarGradient = (dhu: number) => {
+  if (dhu <= 0) return "linear-gradient(90deg,#34d399,#10b981)";
+  if (dhu < 3) return "linear-gradient(90deg,#fcd34d,#f59e0b)";
+  return "linear-gradient(90deg,#fb7185,#ef4444)";
+};
+
+const dhuTextClass = (dhu: number) =>
+  dhu <= 0
+    ? "text-green-400 kiosk-s3-dhu-text-ok"
+    : "text-red-400 kiosk-s3-dhu-text-bad";
 
 const defectTone = (qty: number) => {
   if (qty <= 0)
@@ -65,17 +72,15 @@ export default function SlideThree({ qualityRows }: { qualityRows: QualityRow[] 
 
   const rowCount = qualityRows.length;
   const needsCompact = compactH || rowCount >= 8;
-  const headPad = needsCompact ? "px-3 py-2" : "px-4 py-3";
-  const rowPad = needsCompact ? "px-3 py-1.5" : "px-4 py-2";
-  const rowH = needsCompact ? "h-[44px]" : "h-[52px]";
-  const headSz = compactH ? "14px" : "16px";
-  const bodySz = compactH ? "15px" : "17px";
+  const headPad = "px-4";
+  const rowPad = needsCompact ? "px-3 py-2" : "px-4 py-2.5";
+  const rowH = needsCompact ? "h-[52px]" : "h-[58px]";
 
   return (
     <div className="h-full w-full p-2.5">
       {/* Main card */}
       <div
-        className="flex h-full flex-col overflow-hidden rounded-2xl border border-white/10"
+        className="kiosk-s3-card flex h-full flex-col overflow-hidden rounded-2xl border border-white/10"
         style={{
           background: "var(--kiosk-card, rgba(8,15,30,0.97))",
           backdropFilter: "blur(10px)",
@@ -83,30 +88,33 @@ export default function SlideThree({ qualityRows }: { qualityRows: QualityRow[] 
         }}
       >
         {/* Title bar */}
-        <div className="relative shrink-0 flex items-center justify-center border-b border-white/8 px-5 py-3">
-          <h2
-            className="kiosk-header font-bold uppercase text-white text-center"
-            style={{ fontSize: compactH ? "22px" : "28px", letterSpacing: "0.14em" }}
+        <div className="relative shrink-0 flex items-center justify-center gap-3.5 border-b border-white/8 px-5 py-3">
+          <div
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-[0_6px_18px_rgba(139,92,246,0.45)] ring-1 ring-white/20"
+            style={{ background: "linear-gradient(135deg,#8b5cf6,#22d3ee)" }}
           >
-            Quality Monitoring
-          </h2>
+            <ShieldCheck className="h-6 w-6 text-white" strokeWidth={2.4} />
+          </div>
+          <div className="text-center">
+            <h2
+              className="kiosk-header font-black text-white kiosk-s3-title leading-none"
+              style={{ fontSize: "clamp(1.45rem, 2.2vw, 1.75rem)", letterSpacing: "0.06em" }}
+            >
+              Quality Monitoring
+            </h2>
+            <div className="kiosk-s3-subtitle kiosk-data mt-1 text-[0.78rem] font-semibold uppercase tracking-[0.2em] text-white/45">
+              Hourly defect &amp; DHU tracking
+            </div>
+          </div>
+          {/* Cohesive brand divider */}
           <div
             className="absolute bottom-0 left-[8%] right-[8%] h-[2px] rounded-full"
             style={{
               background:
-                "linear-gradient(90deg, transparent, #7C3AED 30%, #06B6D4 60%, #10B981 85%, transparent)",
+                "linear-gradient(90deg, transparent, #6366f1 18%, #8b5cf6 50%, #22d3ee 82%, transparent)",
             }}
           />
         </div>
-
-        {/* Rainbow stripe */}
-        <div
-          className="h-[3px] w-full shrink-0"
-          style={{
-            background:
-              "linear-gradient(90deg, #3B82F6 0%, #7C3AED 25%, #F59E0B 50%, #06B6D4 75%, #10B981 100%)",
-          }}
-        />
 
         {/* Table */}
         <div className="min-h-0 flex-1 overflow-hidden">
@@ -116,46 +124,49 @@ export default function SlideThree({ qualityRows }: { qualityRows: QualityRow[] 
           >
             <colgroup>
               <col style={{ width: compactH ? "158px" : "188px" }} />
-              <col style={{ width: compactH ? "185px" : "215px" }} />
+              <col style={{ width: compactH ? "210px" : "240px" }} />
               <col style={{ width: compactH ? "118px" : "138px" }} />
               <col style={{ width: "31%" }} />
               <col style={{ width: compactH ? "130px" : "158px" }} />
             </colgroup>
 
             <thead>
-              <tr>
-                {/* HOURS — steel blue */}
+              <tr className="h-[44px]">
+                {/* HOURS — indigo accent */}
                 <th
-                  className={cn("text-left font-bold uppercase text-white border-r border-white/10", headPad)}
-                  style={{ fontSize: headSz, letterSpacing: "0.12em", background: "#1E3A8A" }}
+                  className={cn("kiosk-th text-left font-extrabold uppercase", headPad)}
+                  style={{ fontSize: "1rem", letterSpacing: "0.1em", boxShadow: `inset 0 -3px 0 ${ACCENT.indigo}` }}
                 >
-                  Hours
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.indigo }} />
+                    Hours
+                  </span>
                 </th>
-                {/* DHU — bright purple */}
+                {/* DHU — violet accent */}
                 <th
-                  className={cn("text-right font-bold uppercase text-white border-r border-white/10", headPad)}
-                  style={{ fontSize: headSz, letterSpacing: "0.12em", background: "#6D28D9" }}
+                  className={cn("kiosk-th text-left font-extrabold uppercase", headPad)}
+                  style={{ fontSize: "1rem", letterSpacing: "0.1em", boxShadow: `inset 0 -3px 0 ${ACCENT.violet}` }}
                 >
                   DHU
                 </th>
-                {/* DEFECTS — amber */}
+                {/* DEFECTS — rose accent */}
                 <th
-                  className={cn("text-right font-bold uppercase text-white border-r border-white/10", headPad)}
-                  style={{ fontSize: headSz, letterSpacing: "0.12em", background: "#92400E" }}
+                  className={cn("kiosk-th text-center font-extrabold uppercase", headPad)}
+                  style={{ fontSize: "1rem", letterSpacing: "0.1em", boxShadow: `inset 0 -3px 0 ${ACCENT.rose}` }}
                 >
                   Defects
                 </th>
-                {/* TOP 3 DEFECTS — cyan */}
+                {/* TOP 3 DEFECTS — cyan accent */}
                 <th
-                  className={cn("text-left font-bold uppercase text-white border-r border-white/10", headPad)}
-                  style={{ fontSize: headSz, letterSpacing: "0.12em", background: "#0E7490" }}
+                  className={cn("kiosk-th text-left font-extrabold uppercase", headPad)}
+                  style={{ fontSize: "1rem", letterSpacing: "0.1em", boxShadow: `inset 0 -3px 0 ${ACCENT.cyan}` }}
                 >
                   Top 3 Defects
                 </th>
-                {/* REMARKS — emerald */}
+                {/* REMARKS — emerald accent */}
                 <th
-                  className={cn("text-left font-bold uppercase text-white", headPad)}
-                  style={{ fontSize: headSz, letterSpacing: "0.12em", background: "#065F46" }}
+                  className={cn("kiosk-th text-left font-extrabold uppercase", headPad)}
+                  style={{ fontSize: "1rem", letterSpacing: "0.1em", boxShadow: `inset 0 -3px 0 ${ACCENT.emerald}` }}
                 >
                   Remarks
                 </th>
@@ -167,8 +178,7 @@ export default function SlideThree({ qualityRows }: { qualityRows: QualityRow[] 
                 const zebra = idx % 2 === 0;
                 const dhu = Number(r.dhu ?? 0);
                 const defects = Number(r.defects ?? 0);
-                const { pill, text: dhuText, glow } = dhuTone(dhu);
-                const defStyle = defectTone(defects);
+                const dhuFill = Math.min(100, dhu * 10);
 
                 return (
                   <tr
@@ -190,58 +200,67 @@ export default function SlideThree({ qualityRows }: { qualityRows: QualityRow[] 
                     >
                       <div className="flex items-center gap-2.5">
                         <div
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-black text-white"
+                          className="kiosk-s3-hour-badge flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-black text-white"
                           style={{
-                            background: "rgba(59,130,246,0.2)",
-                            border: "1px solid rgba(59,130,246,0.45)",
+                            background: "rgba(59,130,246,0.25)",
+                            border: "1px solid rgba(59,130,246,0.5)",
                           }}
                         >
                           {r.hour}
                         </div>
-                        <span className="font-bold text-white" style={{ fontSize: bodySz }}>
+                        <span
+                          className="kiosk-s3-hour-text font-bold text-white"
+                          style={{ fontSize: "1.15rem" }}
+                        >
                           Hour {r.hour}
                         </span>
                       </div>
                     </td>
 
-                    {/* DHU cell */}
-                    <td className={cn("border-b border-white/8 border-r border-white/8 text-right", rowPad)}>
-                      <div className="flex justify-end">
+                    {/* DHU cell — progress bar + text */}
+                    <td className={cn("border-b border-white/8 border-r border-white/8", rowPad)}>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="kiosk-s3-dhu-track relative h-[9px] w-[120px] shrink-0 overflow-hidden rounded-full ring-1 ring-inset ring-white/5"
+                          style={{ background: "rgba(255,255,255,0.08)" }}
+                        >
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-700 ease-out"
+                            style={{
+                              width: `${Math.max(dhu > 0 ? 6 : 0, dhuFill)}%`,
+                              background: dhuBarGradient(dhu),
+                              boxShadow: dhu > 0 ? `0 0 8px ${dhuBarColor(dhu)}80` : "none",
+                            }}
+                          />
+                        </div>
                         <span
-                          className={cn(
-                            "inline-flex min-w-[72px] justify-center rounded-full border px-3 py-1.5 font-black tabular-nums",
-                            pill,
-                            dhuText,
-                            glow
-                          )}
-                          style={{ fontSize: bodySz }}
+                          className={cn("font-extrabold tabular-nums", dhuTextClass(dhu))}
+                          style={{ fontSize: "1.375rem" }}
                         >
                           {dhu.toFixed(1)}%
                         </span>
                       </div>
                     </td>
 
-                    {/* Defects cell */}
-                    <td className={cn("border-b border-white/8 border-r border-white/8 text-right", rowPad)}>
-                      {defects === 0 ? (
-                        <span className="italic text-slate-500" style={{ fontSize: bodySz }}>
-                          0
-                        </span>
-                      ) : (
-                        <div className="flex justify-end">
+                    {/* Defects cell — green pill for 0, red pill for >0 */}
+                    <td className={cn("border-b border-white/8 border-r border-white/8 text-center", rowPad)}>
+                      <div className="flex justify-center">
+                        <span
+                          className={cn(
+                            "inline-flex min-w-[52px] items-center justify-center gap-1.5 rounded-full border px-3.5 py-1 font-extrabold tabular-nums ring-1 ring-inset",
+                            defects === 0
+                              ? "kiosk-s3-defect-ok border-emerald-400/30 bg-emerald-500/15 text-emerald-300 ring-emerald-300/10"
+                              : "kiosk-s3-defect-bad border-rose-400/35 bg-rose-500/15 text-rose-300 ring-rose-300/10"
+                          )}
+                          style={{ fontSize: "1.375rem" }}
+                        >
                           <span
-                            className={cn(
-                              "inline-flex min-w-[56px] justify-center rounded-full border px-3 py-1.5 font-black tabular-nums",
-                              defStyle.border,
-                              defStyle.bg,
-                              defStyle.text
-                            )}
-                            style={{ fontSize: bodySz }}
-                          >
-                            {defects}
-                          </span>
-                        </div>
-                      )}
+                            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                            style={{ background: defects === 0 ? "#34d399" : "#fb7185" }}
+                          />
+                          {defects}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Top 3 Defects */}
@@ -252,10 +271,10 @@ export default function SlideThree({ qualityRows }: { qualityRows: QualityRow[] 
                             <span
                               key={`${code}-${i2}`}
                               className={cn(
-                                "inline-flex items-center rounded-full border px-3 py-1 font-bold",
-                                i2 === 0 && "border-rose-400/40 bg-rose-500/15 text-rose-300",
-                                i2 === 1 && "border-amber-400/40 bg-amber-500/15 text-amber-300",
-                                i2 === 2 && "border-cyan-400/40 bg-cyan-500/15 text-cyan-300"
+                                "kiosk-s3-chip inline-flex items-center rounded-full border px-3 py-1 font-bold ring-1 ring-inset",
+                                i2 === 0 && "border-rose-400/35 bg-rose-500/15 text-rose-200 ring-rose-300/10",
+                                i2 === 1 && "border-amber-400/35 bg-amber-500/15 text-amber-200 ring-amber-300/10",
+                                i2 === 2 && "border-cyan-400/35 bg-cyan-500/15 text-cyan-200 ring-cyan-300/10"
                               )}
                               style={{ fontSize: compactH ? "13px" : "14px" }}
                             >
@@ -265,9 +284,15 @@ export default function SlideThree({ qualityRows }: { qualityRows: QualityRow[] 
                         </div>
                       ) : (
                         <span
-                          className="italic text-slate-500"
-                          style={{ fontSize: compactH ? "13px" : "14px" }}
+                          className="kiosk-s3-empty inline-flex items-center gap-2 rounded-full border border-dashed px-3 py-1 font-semibold"
+                          style={{
+                            fontSize: compactH ? "13px" : "14px",
+                            borderColor: "var(--kiosk-wip-border, rgba(255,255,255,0.10))",
+                            background: "var(--kiosk-wip-row-idle, rgba(255,255,255,0.018))",
+                            color: "var(--kiosk-text-muted, rgba(255,255,255,0.45))",
+                          }}
                         >
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400/70" />
                           No defects
                         </span>
                       )}
@@ -279,17 +304,22 @@ export default function SlideThree({ qualityRows }: { qualityRows: QualityRow[] 
                         <button
                           type="button"
                           onClick={() => setOpenHour(r)}
-                          className="inline-flex items-center rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 font-bold text-emerald-300 transition hover:bg-emerald-500/25"
+                          className="kiosk-s3-details-btn group inline-flex items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3.5 py-1.5 font-bold text-emerald-300 ring-1 ring-inset ring-emerald-300/10 transition hover:bg-emerald-500/25 hover:ring-emerald-300/20"
                           style={{ fontSize: compactH ? "13px" : "14px" }}
                         >
                           Details
+                          <span className="transition-transform group-hover:translate-x-0.5">›</span>
                         </button>
                       ) : (
                         <span
-                          className="text-slate-500"
-                          style={{ fontSize: compactH ? "13px" : "14px" }}
+                          className="kiosk-s3-empty inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed"
+                          style={{
+                            fontSize: "0.9rem",
+                            borderColor: "var(--kiosk-wip-border, rgba(255,255,255,0.10))",
+                            color: "var(--kiosk-text-muted, rgba(255,255,255,0.40))",
+                          }}
                         >
-                          —
+                          –
                         </span>
                       )}
                     </td>

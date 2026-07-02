@@ -125,6 +125,14 @@ class DailyProductionReportView(APIView):
                 description="Filter by multiple colors (comma-separated)",
                 required=False,
             ),
+            OpenApiParameter(
+                name="include_hidden",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                description="Include manually-completed (hidden) rows, flagged is_hidden "
+                "(excluded from summary totals). Defaults to false.",
+                required=False,
+            ),
         ],
         responses={200: DailyProductionReportResponseSerializer},
     )
@@ -163,6 +171,7 @@ class DailyProductionReportView(APIView):
 
                 sizes=validated_data.get("sizes"),
                 colors=validated_data.get("colors"),
+                include_hidden=validated_data.get("include_hidden", False),
             )
 
             # Prepare response data
@@ -201,6 +210,11 @@ def _generate_summary(production_lines_data):
 
     for line_data in production_lines_data:
         for order_data in line_data.get("orders", []):
+            # Hidden (manually-completed) rows are only present when the caller
+            # asked to reveal them; they must never contribute to totals so the
+            # summary stays identical whether or not include_hidden is set.
+            if order_data.get("is_hidden"):
+                continue
             total_orders += 1
             total_quantity += order_data.get("order_quantity", 0)
             total_input += int(order_data.get("input", 0) or 0)

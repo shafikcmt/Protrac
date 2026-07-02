@@ -45,6 +45,10 @@ from .garment import (  # noqa
     GarmentDetailView,
 )
 
+from .stats import (  # noqa
+    OverviewStatsView,
+)
+
 from .report import (  # noqa
     SewingDashboardView,
     FinishingDashboardView,
@@ -68,6 +72,7 @@ from .scan import (  # noqa
     part_receive_info,
     assembly_tracking_issue_scan,
     assembly_tracking_issue_info,
+    assembly_daily_summary,
     sewing_qc_scan,
     sewing_qc_info,
     finishing_qc_scan,

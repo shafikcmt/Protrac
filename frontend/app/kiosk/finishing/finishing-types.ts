@@ -62,11 +62,16 @@ export const STATUS_LABEL: Record<StatusKind, string> = {
 };
 
 export const STATUS_BADGE_CLASS: Record<StatusKind, string> = {
-  expired: "bg-red-500 text-white",
-  "due-today": "bg-red-500 text-white",
-  "expiring-soon": "bg-amber-400 text-black",
-  "in-progress": "bg-blue-600 text-white",
-  done: "bg-green-500 text-white",
+  expired:
+    "bg-red-500 text-white ring-1 ring-inset ring-red-300/40 shadow-sm shadow-red-500/20",
+  "due-today":
+    "bg-red-500 text-white ring-1 ring-inset ring-red-300/40 shadow-sm shadow-red-500/20",
+  "expiring-soon":
+    "bg-amber-400 text-amber-950 ring-1 ring-inset ring-amber-200/60 shadow-sm shadow-amber-500/20",
+  "in-progress":
+    "bg-blue-600 text-white ring-1 ring-inset ring-blue-300/40 shadow-sm shadow-blue-500/20",
+  done:
+    "bg-green-500 text-white ring-1 ring-inset ring-green-300/40 shadow-sm shadow-green-500/20",
 };
 
 export const STATUS_BORDER_CLASS: Record<StatusKind, string> = {

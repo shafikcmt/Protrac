@@ -160,6 +160,7 @@ function WipRow({
   glowColor,
   icon,
   grow = false,
+  accent,
 }: {
   label: string;
   value: number;
@@ -168,6 +169,7 @@ function WipRow({
   glowColor: string;
   icon?: React.ReactNode;
   grow?: boolean;
+  accent?: string;
 }) {
   const active = value > 0;
   return (
@@ -206,10 +208,13 @@ function WipRow({
       </div>
       <WipSegBar value={value} max={max} fillColor={fillColor} glowColor={glowColor} />
       <div
-        className="shrink-0 text-right tabular-nums kiosk-data"
+        className={cn(
+          "shrink-0 text-right tabular-nums kiosk-data kiosk-s1-wipval",
+          active && accent && `kiosk-s1-val-${accent}`
+        )}
         style={{
           minWidth: 56,
-          fontSize: "1.15rem",
+          fontSize: "1.3rem",
           fontWeight: 900,
           color: active ? fillColor : "var(--kiosk-wip-label-idle, rgba(255,255,255,0.2))",
         }}
@@ -483,7 +488,7 @@ export default function SlideOne({
                   <th
                     className="text-left uppercase px-3 border-r"
                     style={{
-                      fontSize: "0.95rem",
+                      fontSize: "1rem",
                       fontWeight: 800,
                       color: "#ffffff",
                       background: "#1E3A8A",
@@ -496,7 +501,7 @@ export default function SlideOne({
                   <th
                     className="text-right uppercase px-3 border-r"
                     style={{
-                      fontSize: "0.95rem",
+                      fontSize: "1rem",
                       fontWeight: 800,
                       color: "#ffffff",
                       background: "#065F46",
@@ -509,7 +514,7 @@ export default function SlideOne({
                   <th
                     className="text-right uppercase px-3 border-r"
                     style={{
-                      fontSize: "0.95rem",
+                      fontSize: "1rem",
                       fontWeight: 800,
                       color: "#ffffff",
                       background: "#6D28D9",
@@ -522,7 +527,7 @@ export default function SlideOne({
                   <th
                     className="text-right uppercase px-3 border-r"
                     style={{
-                      fontSize: "0.95rem",
+                      fontSize: "1rem",
                       fontWeight: 800,
                       color: "#ffffff",
                       background: "#92400E",
@@ -535,7 +540,7 @@ export default function SlideOne({
                   <th
                     className="text-right uppercase px-3"
                     style={{
-                      fontSize: "0.95rem",
+                      fontSize: "1rem",
                       fontWeight: 800,
                       color: "#ffffff",
                       background: "#0E4E6B",
@@ -607,7 +612,7 @@ export default function SlideOne({
                           <span
                             className="kiosk-data"
                             style={{
-                              fontSize: "1.05rem",
+                              fontSize: "1.2rem",
                               fontWeight: 800,
                               color: "var(--kiosk-text, #ffffff)",
                             }}
@@ -620,7 +625,7 @@ export default function SlideOne({
                       <td
                         className="border-b border-r text-right px-3 tabular-nums kiosk-data"
                         style={{
-                          fontSize: "1.15rem",
+                          fontSize: "1.3rem",
                           fontWeight: 800,
                           color: "var(--kiosk-text, #ffffff)",
                           borderColor: "var(--kiosk-row-border, rgba(255,255,255,0.05))",
@@ -633,7 +638,7 @@ export default function SlideOne({
                       <td
                         className="border-b border-r text-right px-3 tabular-nums kiosk-data"
                         style={{
-                          fontSize: "1.1rem",
+                          fontSize: "1.25rem",
                           fontWeight: 700,
                           color: "var(--kiosk-text, #ffffff)",
                           borderColor: "var(--kiosk-row-border, rgba(255,255,255,0.05))",
@@ -661,7 +666,7 @@ export default function SlideOne({
                               height: 40,
                               paddingLeft: 8,
                               paddingRight: 8,
-                              fontSize: "1.1rem",
+                              fontSize: "1.3rem",
                               fontWeight: 900,
                               ...(ok
                                 ? {
@@ -684,7 +689,7 @@ export default function SlideOne({
                       <td
                         className="border-b text-right px-3 tabular-nums kiosk-data"
                         style={{
-                          fontSize: "1.15rem",
+                          fontSize: "1.3rem",
                           fontWeight: 800,
                           color: "var(--kiosk-text, #ffffff)",
                           borderColor: "var(--kiosk-row-border, rgba(255,255,255,0.05))",
@@ -725,25 +730,25 @@ export default function SlideOne({
                   </td>
                   <td
                     className="text-right px-3 tabular-nums kiosk-data"
-                    style={{ fontSize: "1.2rem", fontWeight: 900, color: "#ffffff", background: "#064E3B" }}
+                    style={{ fontSize: "1.4rem", fontWeight: 900, color: "#ffffff", background: "#064E3B" }}
                   >
                     {computed.totalTarget}
                   </td>
                   <td
                     className="text-right px-3 tabular-nums kiosk-data"
-                    style={{ fontSize: "1.2rem", fontWeight: 900, color: "#ffffff", background: "#5B21B6" }}
+                    style={{ fontSize: "1.4rem", fontWeight: 900, color: "#ffffff", background: "#5B21B6" }}
                   >
                     {computed.totalTarget}
                   </td>
                   <td
                     className="text-right px-3 tabular-nums kiosk-data"
-                    style={{ fontSize: "1.2rem", fontWeight: 900, color: "#ffffff", background: "#78350F" }}
+                    style={{ fontSize: "1.4rem", fontWeight: 900, color: "#ffffff", background: "#78350F" }}
                   >
                     {computed.totalActual}
                   </td>
                   <td
                     className="text-right px-3 tabular-nums kiosk-data"
-                    style={{ fontSize: "1.2rem", fontWeight: 900, color: "#ffffff", background: "#0C4A6E" }}
+                    style={{ fontSize: "1.4rem", fontWeight: 900, color: "#ffffff", background: "#0C4A6E" }}
                   >
                     {computed.totalActual}
                   </td>
@@ -810,6 +815,7 @@ export default function SlideOne({
               glowColor="rgba(59,130,246,0.7)"
               icon={<ArrowDownToLine className="h-[15px] w-[15px]" />}
               grow
+              accent="input"
             />
             <WipRow
               label="Total Output"
@@ -819,6 +825,7 @@ export default function SlideOne({
               glowColor="rgba(0,255,157,0.7)"
               icon={<ArrowUpFromLine className="h-[15px] w-[15px]" />}
               grow
+              accent="output"
             />
             <WipRow
               label="Line WIP"
@@ -828,6 +835,7 @@ export default function SlideOne({
               glowColor="rgba(168,85,247,0.7)"
               icon={<Layers3 className="h-[15px] w-[15px]" />}
               grow
+              accent="linewip"
             />
 
             {/* Divider — shrink-0 so it never consumes row height */}
@@ -883,6 +891,7 @@ export default function SlideOne({
                   glowColor={cfg.glow}
                   icon={cfg.icon}
                   grow
+                  accent={partName}
                 />
               );
             })}

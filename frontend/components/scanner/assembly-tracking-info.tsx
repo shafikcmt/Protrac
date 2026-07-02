@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { History, Package, Shirt, Clock } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { schemas } from "@/types/api/client";
 import { z } from "zod";
 
@@ -22,26 +23,40 @@ interface AssemblyTrackingInfoProps {
   isLoadingGarmentInfo: boolean;
 }
 
+/* Consistent colour per part name for the badges */
+const PART_TONES: Array<{ bg: string; text: string; ring: string }> = [
+  { bg: "bg-blue-500/12", text: "text-blue-600 dark:text-blue-300", ring: "ring-blue-500/30" },
+  { bg: "bg-violet-500/12", text: "text-violet-600 dark:text-violet-300", ring: "ring-violet-500/30" },
+  { bg: "bg-amber-500/12", text: "text-amber-700 dark:text-amber-300", ring: "ring-amber-500/30" },
+  { bg: "bg-emerald-500/12", text: "text-emerald-600 dark:text-emerald-300", ring: "ring-emerald-500/30" },
+  { bg: "bg-rose-500/12", text: "text-rose-600 dark:text-rose-300", ring: "ring-rose-500/30" },
+  { bg: "bg-cyan-500/12", text: "text-cyan-600 dark:text-cyan-300", ring: "ring-cyan-500/30" },
+];
+
+function partTone(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return PART_TONES[h % PART_TONES.length];
+}
+
 export function AssemblyTrackingInfo({
   assemblyPartReceiveData,
   garmentIssueData,
   isLoadingAssemblyInfo,
   isLoadingGarmentInfo,
 }: AssemblyTrackingInfoProps) {
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString("en-US", {
+  const formatTime = (dateString: string) =>
+    new Date(dateString).toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
     });
-  };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
     });
-  };
 
   const LoadingSkeleton = () => (
     <div className="space-y-3">
@@ -68,43 +83,249 @@ export function AssemblyTrackingInfo({
     </div>
   );
 
-  // ✅ KEEP BEFORE UI DATA SOURCE (inventory cards)
+  // Raw payload (typed loosely — endpoint shape is dynamic)
   const inventoryItems = (assemblyPartReceiveData as any)?.inventory_items || [];
   const inventoryCount =
     (assemblyPartReceiveData as any)?.inventory_count ?? inventoryItems.length;
-
-  // ✅ recent_scans used only for "Update" line
   const recentScans = (assemblyPartReceiveData as any)?.recent_scans || [];
 
-  // ✅ Latest scan per (order_id + part_name), DESC by created_at
+  // Latest scan per (order_id + part_name), DESC by created_at — used for the
+  // per-part "Update" line.
   const latestScanByOrderPart = React.useMemo(() => {
     const m = new Map<string, any>();
-
-    const sorted = [...recentScans].sort((a: any, b: any) => {
-      const ta = new Date(a?.created_at || 0).getTime();
-      const tb = new Date(b?.created_at || 0).getTime();
-      return tb - ta; // ✅ DESC (latest first)
-    });
-
+    const sorted = [...recentScans].sort(
+      (a: any, b: any) =>
+        new Date(b?.created_at || 0).getTime() -
+        new Date(a?.created_at || 0).getTime()
+    );
     for (const s of sorted) {
       const b = s?.bundle;
       const o = b?.order;
       if (!b || !o) continue;
-
       const key = `${o.id}-${String(b.part_name || "")}`;
-      if (!m.has(key)) m.set(key, s); // first one is latest (DESC)
+      if (!m.has(key)) m.set(key, s);
     }
-
     return m;
   }, [recentScans]);
 
-  const garmentIssues = garmentIssueData?.results || [];
-  const garmentIssueCount = (garmentIssueData as any)?.count ?? garmentIssues.length;
+  // Most-recently-scanned order = the active order/style.
+  const activeOrderId = React.useMemo(() => {
+    let active: number | null = null;
+    let latest = -Infinity;
+    for (const s of recentScans) {
+      const oid = s?.bundle?.order?.id;
+      if (oid == null) continue;
+      const t = new Date(s?.created_at || 0).getTime();
+      if (t > latest) {
+        latest = t;
+        active = oid;
+      }
+    }
+    return active;
+  }, [recentScans]);
 
-  const safePct = (issued: number, total: number) => {
-    if (!Number.isFinite(issued) || !Number.isFinite(total) || total <= 0) return 0;
-    return Math.round((issued / total) * 100);
+  // Latest scan time per order — used to sort groups by recency.
+  const latestTimeByOrder = React.useMemo(() => {
+    const m = new Map<number, number>();
+    for (const s of recentScans) {
+      const oid = s?.bundle?.order?.id;
+      if (oid == null) continue;
+      const t = new Date(s?.created_at || 0).getTime();
+      if (!m.has(oid) || t > (m.get(oid) as number)) m.set(oid, t);
+    }
+    return m;
+  }, [recentScans]);
+
+  // Group inventory items by order/style, then sort groups so the active
+  // (most recently scanned) order is always on top.
+  const groups = React.useMemo(() => {
+    const map = new Map<number, any>();
+    for (const it of inventoryItems) {
+      const oid = it.order_id;
+      if (!map.has(oid)) {
+        map.set(oid, {
+          orderId: oid,
+          order_number: it.order_number,
+          style: it.style,
+          color: it.color,
+          size: it.size,
+          season: it.season,
+          parts: [] as any[],
+        });
+      }
+      map.get(oid).parts.push(it);
+    }
+
+    const arr = Array.from(map.values());
+    for (const g of arr) {
+      g.parts.sort((a: any, b: any) =>
+        String(a.part).localeCompare(String(b.part))
+      );
+    }
+
+    arr.sort((a, b) => {
+      if (a.orderId === activeOrderId) return -1;
+      if (b.orderId === activeOrderId) return 1;
+      const ta = latestTimeByOrder.get(a.orderId) ?? -Infinity;
+      const tb = latestTimeByOrder.get(b.orderId) ?? -Infinity;
+      return tb - ta;
+    });
+
+    return arr;
+  }, [inventoryItems, activeOrderId, latestTimeByOrder]);
+
+  // Keep only orders/styles that still have work: any part with units left to
+  // receive (target − received > 0) or parts on hand not yet issued
+  // (available > 0). Fully received + fully issued orders drop off the list.
+  const visibleGroups = React.useMemo(
+    () =>
+      groups.filter((g) =>
+        g.parts.some((p: any) => {
+          const target = Number(p.order_quantity ?? p.total_quantity ?? 0);
+          const received = Number(p.total_quantity ?? 0);
+          const available = Number(
+            p.available_quantity ?? received - Number(p.issued_quantity ?? 0)
+          );
+          return target - received > 0 || available > 0;
+        })
+      ),
+    [groups]
+  );
+
+  const garmentIssues = garmentIssueData?.results || [];
+  const garmentIssueCount =
+    (garmentIssueData as any)?.count ?? garmentIssues.length;
+
+  const safePct = (value: number, total: number) => {
+    if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
   };
+
+  /* ── A single part row ── */
+  const PartRow = ({ part }: { part: any }) => {
+    // Total = order target (uniform per order); Received = cumulative received.
+    const target = Number(part.order_quantity ?? part.total_quantity ?? 0);
+    const received = Number(part.total_quantity ?? 0);
+    const issued = Number(part.issued_quantity ?? 0);
+    const available = Number(part.available_quantity ?? received - issued);
+    const remaining = Math.max(0, target - received);
+
+    const receivedPct = safePct(received, target);
+    const tone = partTone(String(part.part || ""));
+
+    const scanKey = `${part.order_id}-${String(part.part || "")}`;
+    const lastScan = latestScanByOrderPart.get(scanKey);
+
+    const barColor =
+      receivedPct >= 100 ? "#10b981" : receivedPct >= 50 ? "#3b82f6" : "#f59e0b";
+
+    return (
+      <div className="rounded-lg border bg-card/40 px-3 py-2 transition-colors hover:bg-accent/40">
+        {/* Row 1 — part identity + last scan */}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+           className={cn(
+              "shrink-0 rounded-md px-2 py-1 text-xs font-bold uppercase tracking-wide ring-1 ring-inset",
+              tone?.bg,
+              tone?.text,
+              tone?.ring
+            )}
+          >
+            {part.part}
+          </span>
+          <div className="min-w-0">
+            {lastScan?.created_at ? (
+              <p className="truncate text-[11px] text-muted-foreground">
+                {String(lastScan.event_type || "").replaceAll("_", " ")} ·{" "}
+                {formatTime(lastScan.created_at)} · {formatDate(lastScan.created_at)}
+              </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground/70">No recent scan</p>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2 — 50% progress bar | 50% stats */}
+        <div className="mt-1.5 flex items-center gap-4">
+          {/* Left half: progress bar */}
+          <div className="w-1/2 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full transition-[width] duration-500"
+                  style={{ width: `${receivedPct}%`, background: barColor }}
+                />
+              </div>
+              <span className="w-9 text-right text-xs font-semibold tabular-nums">{receivedPct}%</span>
+            </div>
+            <div className="mt-1 text-[11px] font-medium text-muted-foreground">
+              {remaining > 0 ? `${remaining} to receive` : "complete"}
+            </div>
+          </div>
+
+          {/* Right half: stats */}
+          <div className="grid w-1/2 grid-cols-4 gap-2 text-center">
+            <div>
+              <div className="text-[10px] font-medium uppercase text-blue-600 dark:text-blue-400">Avail</div>
+              <div className="text-sm font-bold tabular-nums text-blue-700 dark:text-blue-300">{available}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-medium uppercase text-indigo-600 dark:text-indigo-400">Recv</div>
+              <div className="text-sm font-bold tabular-nums text-indigo-700 dark:text-indigo-300">{received}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-medium uppercase text-emerald-600 dark:text-emerald-400">Issued</div>
+              <div className="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{issued}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-medium uppercase text-muted-foreground">Total</div>
+              <div className="text-sm font-bold tabular-nums">{target}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* ── A group card (one order/style) ── */
+  const GroupCard = ({ group, active }: { group: any; active: boolean }) => (
+    <div
+      className={cn(
+        "rounded-xl border p-3",
+        active
+          ? "border-primary/40 bg-primary/[0.04] ring-1 ring-primary/20 shadow-sm"
+          : "bg-muted/20"
+      )}
+    >
+      {/* Group header */}
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-bold">{group.order_number}</span>
+            {active && (
+              <Badge className="h-5 gap-1 bg-emerald-500 px-1.5 text-[10px] text-white hover:bg-emerald-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                Active
+              </Badge>
+            )}
+          </div>
+          <p className="truncate text-xs text-muted-foreground">
+            {group.style} • {group.color} / {group.size}
+            {group.season ? ` • ${group.season}` : ""}
+          </p>
+        </div>
+        <Badge variant="outline" className="shrink-0 text-[11px]">
+          {group.parts.length} part{group.parts.length !== 1 ? "s" : ""}
+        </Badge>
+      </div>
+
+      <div className="space-y-2">
+        {group.parts.map((part: any, i: number) => (
+          <PartRow key={`${group.orderId}-${part.part}-${i}`} part={part} />
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <Card>
@@ -144,107 +365,22 @@ export function AssemblyTrackingInfo({
             </TabsTrigger>
           </TabsList>
 
-          {/* ✅ SAME UI AS BEFORE */}
           <TabsContent value="assembly-parts">
-            <ScrollArea className="h-[400px]">
+            <ScrollArea className="h-[460px] pr-3">
               {isLoadingAssemblyInfo ? (
                 <LoadingSkeleton />
-              ) : inventoryItems.length === 0 ? (
-                <EmptyState icon={Package} message="No assembly part receives" />
+              ) : visibleGroups.length === 0 ? (
+                <EmptyState icon={Package} message="No active orders" />
               ) : (
                 <div className="space-y-3">
-                  {inventoryItems.map((part: any, index: number) => {
-                    const totalQty = Number(part.total_quantity ?? 0);
-                    const issuedQty = Number(part.issued_quantity ?? 0);
-                    const availableQty = Number(part.available_quantity ?? 0);
-
-                    const pct = safePct(issuedQty, totalQty);
-
-                    // ✅ Match recent_scans bundle.part_name with inventory part.part
-                    const scanKey = `${part.order_id}-${String(part.part || "")}`;
-                    const lastScan = latestScanByOrderPart.get(scanKey);
-
-                    return (
-                      <div key={`assembly-${index}`}>
-                        <div className="space-y-2">
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              {/* Left */}
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="secondary" className="font-mono text-xs">
-                                    {part.part}
-                                  </Badge>
-                                </div>
-
-                                <p className="text-sm font-medium">
-                                  {part.style} • {part.color} / {part.size}
-                                </p>
-
-                                <p className="text-xs text-muted-foreground">
-                                  Order: {part.order_number} • Season: {part.season}
-                                </p>
-
-                                {/* ✅ Added ONLY one text line (layout unchanged) */}
-                                {lastScan?.created_at && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Update:{" "}
-                                    {String(lastScan.event_type || "").replaceAll("_", " ")} •{" "}
-                                    {formatTime(lastScan.created_at)} • {formatDate(lastScan.created_at)}
-                                  </p>
-                                )}
-                              </div>
-
-                              {/* Center */}
-                              <div className="bg-muted/50 border rounded-lg px-4 py-2">
-                                <div className="flex items-center gap-4">
-                                  <div className="text-center">
-                                    <div className="text-xs text-blue-600 font-medium">Available</div>
-                                    <div className="text-sm font-bold text-blue-700">{availableQty}</div>
-                                  </div>
-
-                                  <div className="text-center">
-                                    <div className="text-xs text-gray-600 font-medium">Total</div>
-                                    <div className="text-sm font-bold text-gray-700">{totalQty}</div>
-                                  </div>
-
-                                  <div className="text-center">
-                                    <div className="text-xs text-green-600 font-medium">Issued</div>
-                                    <div className="text-sm font-bold text-green-700">{issuedQty}</div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Right */}
-                              <div className="text-right">
-                                <div className="text-xs text-muted-foreground mb-1">Progress</div>
-
-                                <div className="flex items-center gap-2 justify-end">
-                                  <div className="text-xs">
-                                    <span className="font-medium">{issuedQty}</span>
-                                    <span className="text-muted-foreground">/{totalQty}</span>
-                                  </div>
-
-                                  <Badge
-                                    variant={pct >= 80 ? "default" : pct >= 50 ? "secondary" : "outline"}
-                                    className="text-xs px-2"
-                                  >
-                                    {pct}%
-                                  </Badge>
-                                </div>
-
-                                <div className="text-xs text-muted-foreground mt-0.5">
-                                  {availableQty} remaining
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {index < inventoryItems.length - 1 && <Separator className="mt-3" />}
-                      </div>
-                    );
-                  })}
+                  {/* All active orders — most recently scanned pinned on top */}
+                  {visibleGroups.map((g) => (
+                    <GroupCard
+                      key={g.orderId}
+                      group={g}
+                      active={g.orderId === activeOrderId}
+                    />
+                  ))}
                 </div>
               )}
             </ScrollArea>

@@ -11,5 +11,7 @@ export {
   useLineStyleCompletions,
   markStyleComplete,
   undoStyleComplete,
+  useMarkStyleComplete,
+  useUndoStyleComplete,
   type LineStyleCompletionRecord,
 } from "./use-line-style-completion";

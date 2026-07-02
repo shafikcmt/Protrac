@@ -650,19 +650,19 @@ export default function Page() {
     return "dark";
   });
 
-  const cycleInterval = React.useCallback(() => {
+const cycleInterval = React.useCallback(() => {
     setSlideInterval((cur) => {
       const next = SLIDE_INTERVALS[(SLIDE_INTERVALS.indexOf(cur) + 1) % SLIDE_INTERVALS.length];
       if (typeof window !== "undefined") localStorage.setItem("kiosk-slide-interval", String(next));
-      return next;
+      return next ?? cur;
     });
   }, []);
 
-  const cycleTheme = React.useCallback(() => {
+const cycleTheme = React.useCallback(() => {
     setKioskTheme((cur) => {
       const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length];
-      if (typeof window !== "undefined") localStorage.setItem("kiosk-theme", next);
-      return next;
+      if (typeof window !== "undefined" && next) localStorage.setItem("kiosk-theme", next);
+      return next ?? cur;
     });
   }, []);
 
@@ -938,6 +938,52 @@ export default function Page() {
             padding-bottom: 10px !important;
           }
 
+          /* ── Unified table header band (premium, all themes) ── */
+          .kiosk-th {
+            background: linear-gradient(180deg, #243049, #161f33);
+            color: #ffffff;
+          }
+          [data-theme="light"] .kiosk-th {
+            background: linear-gradient(180deg, #f8fafc, #e9eef5);
+            color: #0f172a;
+          }
+          [data-theme="midnight"] .kiosk-th { background: linear-gradient(180deg, #1c1c3e, #111028); }
+          [data-theme="ocean"] .kiosk-th    { background: linear-gradient(180deg, #123047, #0c2235); }
+
+          /* Slide 2/3 title subtitles */
+          [data-theme="light"] .kiosk-s2-subtitle,
+          [data-theme="light"] .kiosk-s3-subtitle { color: #64748b !important; }
+
+          /* Slide 2 — elevated summary rows (Assemble/Output Total) */
+          .kiosk-s2-sumrow {
+            background: linear-gradient(90deg, rgba(99,102,241,0.16) 0%, rgba(34,211,238,0.05) 100%);
+          }
+          .kiosk-s2-sumrow:hover {
+            background: linear-gradient(90deg, rgba(99,102,241,0.24) 0%, rgba(34,211,238,0.09) 100%);
+          }
+          [data-theme="light"] .kiosk-s2-sumrow {
+            background: linear-gradient(90deg, #eef2ff 0%, #ecfeff 100%);
+          }
+          [data-theme="light"] .kiosk-s2-sumrow:hover {
+            background: linear-gradient(90deg, #e0e7ff 0%, #cffafe 100%);
+          }
+          [data-theme="light"] .kiosk-s2-sum-tag {
+            color: #475569 !important;
+            background: #e2e8f0 !important;
+            border-color: #cbd5e1 !important;
+          }
+
+          /* Light theme — slide 1 WIP Summary values: darkened accent colors for contrast */
+          [data-theme="light"] .kiosk-s1-wipval      { color: #64748b !important; font-weight: 900 !important; }
+          [data-theme="light"] .kiosk-s1-val-input   { color: #1d4ed8 !important; }
+          [data-theme="light"] .kiosk-s1-val-output  { color: #059669 !important; }
+          [data-theme="light"] .kiosk-s1-val-linewip { color: #7c3aed !important; }
+          [data-theme="light"] .kiosk-s1-val-front   { color: #c2410c !important; }
+          [data-theme="light"] .kiosk-s1-val-back    { color: #0e7490 !important; }
+          [data-theme="light"] .kiosk-s1-val-sleeve  { color: #2563eb !important; }
+          [data-theme="light"] .kiosk-s1-val-collar  { color: #b45309 !important; }
+          [data-theme="light"] .kiosk-s1-val-hood    { color: #6d28d9 !important; }
+
           /* Light theme — slide 2 table and badges */
           [data-theme="light"] .kiosk-s2-card {
             background: #ffffff !important;
@@ -960,7 +1006,53 @@ export default function Page() {
             border-color: #f97316 !important;
           }
           [data-theme="light"] .kiosk-s2-total-value { color: #c2410c !important; }
-          [data-theme="light"] .kiosk-s2-cell-zero   { color: #94a3b8 !important; }
+          [data-theme="light"] .kiosk-s2-cell-zero   {
+            color: #475569 !important;
+            background: #e2e8f0 !important;
+            border-color: #94a3b8 !important;
+          }
+          /* Light theme — slide 2 title heading */
+          [data-theme="light"] .kiosk-s2-title { color: #0f172a !important; }
+          /* Light theme — Parts row-label cells: light blue tint + dark blue text */
+          [data-theme="light"] .kiosk-s2-part-td   { background: #eff6ff !important; }
+          [data-theme="light"] .kiosk-s2-part-text { color: #1e3a8a !important; }
+          /* Light theme — Target cells: light green tint + dark green text */
+          [data-theme="light"] .kiosk-s2-tgt-td    { background: #ecfdf5 !important; }
+          [data-theme="light"] .kiosk-s2-tgt-val   { color: #047857 !important; }
+
+          /* Light theme — slide 3 quality monitoring */
+          [data-theme="light"] .kiosk-s3-card {
+            background: #ffffff !important;
+            border-color: rgba(0,0,0,0.08) !important;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10) !important;
+          }
+          [data-theme="light"] .kiosk-s3-title   { color: #0f172a !important; }
+          [data-theme="light"] .kiosk-s3-hour-text { color: #0f172a !important; }
+          [data-theme="light"] .kiosk-s3-hour-badge {
+            background: #334155 !important;
+            border-color: transparent !important;
+            color: #ffffff !important;
+          }
+          [data-theme="light"] .kiosk-s3-details-btn {
+            background: #dcfce7 !important; border-color: #86efac !important; color: #15803d !important;
+          }
+          [data-theme="light"] .kiosk-s3-dhu-track  { background: #e2e8f0 !important; }
+          [data-theme="light"] .kiosk-s3-dhu-text-ok  { color: #15803d !important; }
+          [data-theme="light"] .kiosk-s3-dhu-text-bad { color: #dc2626 !important; }
+
+          /* Light theme — slide 3 badges/chips: stronger contrast on white rows */
+          [data-theme="light"] .kiosk-s3-defect-ok {
+            background: #dcfce7 !important; border-color: #86efac !important; color: #15803d !important;
+          }
+          [data-theme="light"] .kiosk-s3-defect-bad {
+            background: #fee2e2 !important; border-color: #fca5a5 !important; color: #b91c1c !important;
+          }
+          [data-theme="light"] .kiosk-s3-chip {
+            background: #f1f5f9 !important; border-color: #cbd5e1 !important; color: #334155 !important;
+          }
+          [data-theme="light"] .kiosk-s3-empty {
+            background: #f8fafc !important; border-color: #cbd5e1 !important; color: #64748b !important;
+          }
 
           [data-theme="midnight"] {
             --kiosk-bg: #08081A;

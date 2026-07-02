@@ -43,6 +43,33 @@ const TokenRefreshRequest = z
   .passthrough();
 const TokenRefresh = z.object({ access: z.string() }).passthrough();
 const Message = z.object({ message: z.string() }).passthrough();
+const DailySummaryPart = z
+  .object({ part_name: z.string(), issued_today: z.number().int() })
+  .passthrough();
+const DailySummaryGarment = z
+  .object({ id: z.string(), time: z.string() })
+  .passthrough();
+const DailySummaryHour = z
+  .object({
+    hour: z.number().int(),
+    target: z.number().int(),
+    bundles_received: z.number().int(),
+    assembly_complete: z.number().int(),
+  })
+  .passthrough();
+const AssemblyDailySummaryResponse = z
+  .object({
+    line: z.string(),
+    date: z.string(),
+    total_assemble: z.number().int(),
+    parts_summary: z.array(DailySummaryPart),
+    total_parts_issued: z.number().int(),
+    parts_issued_count: z.number().int(),
+    parts_total_count: z.number().int(),
+    recent_garments: z.array(DailySummaryGarment),
+    hourly: z.array(DailySummaryHour).optional().default([]),
+  })
+  .passthrough();
 const BundleStatusEnum = z.enum(["created", "issued_to_sewing", "completed"]);
 const Bundle = z
   .object({
@@ -59,13 +86,8 @@ const Bundle = z
     color_name: z.string(),
     spread: z.number().int(),
     spread_number: z.string(),
-    bundle_number_in_spread: z.number().int().gte(0).lte(9223372036854776000),
-    garment_quantity: z
-      .number()
-      .int()
-      .gte(0)
-      .lte(9223372036854776000)
-      .optional(),
+    bundle_number_in_spread: z.number().int().gte(0).lte(2147483647),
+    garment_quantity: z.number().int().gte(0).lte(2147483647).optional(),
     part_number_start: z.number().int(),
     part_number_end: z.number().int(),
     display_bundle_number: z.string(),
@@ -114,13 +136,8 @@ const BundleRequest = z
     order: z.number().int(),
     part: z.number().int(),
     spread: z.number().int(),
-    bundle_number_in_spread: z.number().int().gte(0).lte(9223372036854776000),
-    garment_quantity: z
-      .number()
-      .int()
-      .gte(0)
-      .lte(9223372036854776000)
-      .optional(),
+    bundle_number_in_spread: z.number().int().gte(0).lte(2147483647),
+    garment_quantity: z.number().int().gte(0).lte(2147483647).optional(),
   })
   .passthrough();
 const PatchedBundleRequest = z
@@ -128,8 +145,8 @@ const PatchedBundleRequest = z
     order: z.number().int(),
     part: z.number().int(),
     spread: z.number().int(),
-    bundle_number_in_spread: z.number().int().gte(0).lte(9223372036854776000),
-    garment_quantity: z.number().int().gte(0).lte(9223372036854776000),
+    bundle_number_in_spread: z.number().int().gte(0).lte(2147483647),
+    garment_quantity: z.number().int().gte(0).lte(2147483647),
   })
   .partial()
   .passthrough();
@@ -386,6 +403,7 @@ const PartInventoryItem = z
     size: z.string(),
     color: z.string(),
     part: z.string(),
+    order_quantity: z.number().int(),
     total_quantity: z.number().int(),
     issued_quantity: z.number().int(),
     available_quantity: z.number().int(),
@@ -426,9 +444,9 @@ const LineTarget = z
     line: z.number().int(),
     line_name: z.string(),
     date: z.string(),
-    target_quantity: z.number().int().gte(0).lte(9223372036854776000),
-    work_hours: z.number().int().gte(0).lte(9223372036854776000).optional(),
-    worker_count: z.number().int().gte(0).lte(9223372036854776000).optional(),
+    target_quantity: z.number().int().gte(0).lte(2147483647),
+    work_hours: z.number().int().gte(0).lte(2147483647).optional(),
+    worker_count: z.number().int().gte(0).lte(2147483647).optional(),
   })
   .passthrough();
 const PaginatedLineTargetList = z
@@ -443,18 +461,18 @@ const LineTargetRequest = z
   .object({
     line: z.number().int(),
     date: z.string(),
-    target_quantity: z.number().int().gte(0).lte(9223372036854776000),
-    work_hours: z.number().int().gte(0).lte(9223372036854776000).optional(),
-    worker_count: z.number().int().gte(0).lte(9223372036854776000).optional(),
+    target_quantity: z.number().int().gte(0).lte(2147483647),
+    work_hours: z.number().int().gte(0).lte(2147483647).optional(),
+    worker_count: z.number().int().gte(0).lte(2147483647).optional(),
   })
   .passthrough();
 const PatchedLineTargetRequest = z
   .object({
     line: z.number().int(),
     date: z.string(),
-    target_quantity: z.number().int().gte(0).lte(9223372036854776000),
-    work_hours: z.number().int().gte(0).lte(9223372036854776000),
-    worker_count: z.number().int().gte(0).lte(9223372036854776000),
+    target_quantity: z.number().int().gte(0).lte(2147483647),
+    work_hours: z.number().int().gte(0).lte(2147483647),
+    worker_count: z.number().int().gte(0).lte(2147483647),
   })
   .partial()
   .passthrough();
@@ -472,7 +490,7 @@ const Order = z
     color_name: z.string(),
     buyer_name: z.string(),
     season_name: z.string(),
-    quantity: z.number().int().gte(0).lte(9223372036854776000),
+    quantity: z.number().int().gte(0).lte(2147483647),
     production_cutting_date: z.string().nullish(),
     delivery_date: z.string().nullish(),
     potential_garments: z.number().int(),
@@ -492,7 +510,7 @@ const OrderRequest = z
     style: z.number().int(),
     size: z.number().int(),
     color: z.number().int(),
-    quantity: z.number().int().gte(0).lte(9223372036854776000),
+    quantity: z.number().int().gte(0).lte(2147483647),
     production_cutting_date: z.string().nullish(),
     delivery_date: z.string().nullish(),
   })
@@ -503,7 +521,7 @@ const PatchedOrderRequest = z
     style: z.number().int(),
     size: z.number().int(),
     color: z.number().int(),
-    quantity: z.number().int().gte(0).lte(9223372036854776000),
+    quantity: z.number().int().gte(0).lte(2147483647),
     production_cutting_date: z.string().nullable(),
     delivery_date: z.string().nullable(),
   })
@@ -583,9 +601,13 @@ const DayAndCumulative = z
   .passthrough();
 const OrderProductionReport = z
   .object({
+    order_id: z.number().int().nullish(),
+    production_line_id: z.number().int().nullish(),
     line: z.string(),
     buyer: z.string(),
     style: z.string(),
+    size: z.string().nullish(),
+    color: z.string().nullish(),
     order_quantity: z.number().int(),
     working_days: z.number().int(),
     working_hours: z.number(),
@@ -602,6 +624,9 @@ const OrderProductionReport = z
     dhu_average: z.number(),
     inspection: DayAndCumulative,
     packed: DayAndCumulative,
+    needs_manual_complete: z.boolean().optional().default(false),
+    is_hidden: z.boolean().optional().default(false),
+    completion_id: z.number().int().nullish(),
   })
   .passthrough();
 const ProductionLineReport = z
@@ -673,8 +698,8 @@ const FinishingOrderDashboard = z
     order_number: z.string(),
     customer_name: z.string(),
     style_name: z.string(),
-    size_name: z.string().nullable().optional(),
-    delivery_date: z.string().nullable().optional(),
+    size_name: z.string().nullish(),
+    delivery_date: z.string().nullish(),
     completion_rate: z.number().optional(),
     input_garments: z.number().int(),
     output_garments: z.number().int(),
@@ -845,6 +870,31 @@ const PartInventory = z
     issued: z.number().int(),
   })
   .passthrough();
+const PartHourlyData = z
+  .object({
+    part: z.string(),
+    target: z.number().int(),
+    hours: z.array(z.number().int()),
+  })
+  .passthrough();
+const DefectBreakdown = z
+  .object({
+    code: z.string(),
+    name: z.string().nullish(),
+    description: z.string().nullish(),
+    qty: z.number().int(),
+  })
+  .passthrough();
+const HourlyQualityRow = z
+  .object({
+    hour: z.number().int(),
+    dhu: z.number(),
+    defects: z.number().int(),
+    units: z.number().int().optional().default(0),
+    remarks: z.array(z.string()).optional(),
+    defect_breakdown: z.array(DefectBreakdown).optional(),
+  })
+  .passthrough();
 const SewingLineDashboardV2 = z
   .object({
     production_line_id: z.number().int(),
@@ -856,12 +906,17 @@ const SewingLineDashboardV2 = z
     efficiency_percentage: z.string().regex(/^-?\d{0,3}(?:\.\d{0,2})?$/),
     rejection_percentage: z.string().regex(/^-?\d{0,3}(?:\.\d{0,2})?$/),
     dhu_percentage: z.string().regex(/^-?\d{0,3}(?:\.\d{0,2})?$/),
-    line_wip: z.number().int(),
     todays_loading: z.number().int(),
     hourly_data: z.array(HourlyData),
     end_line_defects: z.array(DefectDetail),
     qc_stats: QCStats,
     part_inventory: z.array(PartInventory),
+    work_hours: z.number().int().optional().default(8),
+    parts_hourly_data: z.array(PartHourlyData).optional(),
+    hourly_quality_rows: z.array(HourlyQualityRow).optional(),
+    total_input: z.number().int().optional().default(0),
+    total_output: z.number().int().optional().default(0),
+    line_wip: z.number().int(),
   })
   .passthrough();
 const BundleIssueScanRequest = z
@@ -998,7 +1053,7 @@ const Size = z
   .object({
     id: z.number().int(),
     name: z.string().max(20),
-    index: z.number().int().gte(0).lte(9223372036854776000).optional(),
+    index: z.number().int().gte(0).lte(32767).optional(),
     created_at: z.string().datetime({ offset: true }).nullable(),
     updated_at: z.string().datetime({ offset: true }).nullable(),
   })
@@ -1014,13 +1069,13 @@ const PaginatedSizeList = z
 const SizeRequest = z
   .object({
     name: z.string().min(1).max(20),
-    index: z.number().int().gte(0).lte(9223372036854776000).optional(),
+    index: z.number().int().gte(0).lte(32767).optional(),
   })
   .passthrough();
 const PatchedSizeRequest = z
   .object({
     name: z.string().min(1).max(20),
-    index: z.number().int().gte(0).lte(9223372036854776000),
+    index: z.number().int().gte(0).lte(32767),
   })
   .partial()
   .passthrough();
@@ -1114,6 +1169,9 @@ export const schemas = {
   TokenRefreshRequest,
   TokenRefresh,
   Message,
+  DailySummaryPart,
+  DailySummaryGarment,
+  AssemblyDailySummaryResponse,
   BundleStatusEnum,
   Bundle,
   PaginatedBundleList,
@@ -1201,6 +1259,9 @@ export const schemas = {
   DefectDetail,
   QCStats,
   PartInventory,
+  PartHourlyData,
+  DefectBreakdown,
+  HourlyQualityRow,
   SewingLineDashboardV2,
   BundleIssueScanRequest,
   BundleIssueScanResponse,
@@ -1304,6 +1365,21 @@ token if the refresh token is valid.`,
     description: `Returns a simple message indicating the API is healthy.`,
     requestFormat: "json",
     response: z.object({ message: z.string() }).passthrough(),
+  },
+  {
+    method: "get",
+    path: "/api/tracking/assembly/daily-summary/",
+    alias: "tracking_assembly_daily_summary_retrieve",
+    description: `Today&#x27;s assembly summary for the current user&#x27;s line: garments issued for assembly and parts received, scoped to the active order&#x27;s style.`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "date",
+        type: "Query",
+        schema: z.string().optional(),
+      },
+    ],
+    response: AssemblyDailySummaryResponse,
   },
   {
     method: "get",
@@ -2253,6 +2329,17 @@ token if the refresh token is valid.`,
     response: z.void(),
   },
   {
+    method: "post",
+    path: "/api/tracking/line-targets/bulk/",
+    alias: "tracking_line_targets_bulk_create",
+    description: `Bulk create or update line targets for a given date.
+Accepts: { date: &quot;YYYY-MM-DD&quot;, targets: [ { line_id, target_quantity, work_hours, worker_count }, ... ] }
+Uses update_or_create per line+date pair.
+Skips entries where target_quantity is 0 or null.`,
+    requestFormat: "json",
+    response: z.void(),
+  },
+  {
     method: "get",
     path: "/api/tracking/orders/",
     alias: "tracking_orders_list",
@@ -2643,6 +2730,11 @@ token if the refresh token is valid.`,
         schema: z.string().optional(),
       },
       {
+        name: "include_hidden",
+        type: "Query",
+        schema: z.boolean().optional(),
+      },
+      {
         name: "order_id",
         type: "Query",
         schema: z.number().int().optional(),
@@ -2890,6 +2982,39 @@ token if the refresh token is valid.`,
   },
   {
     method: "get",
+    path: "/api/tracking/reports/line-style-completion/",
+    alias: "tracking_reports_line_style_completion_retrieve",
+    description: `GET  /api/tracking/reports/line-style-completion/  — list all manual completions
+POST /api/tracking/reports/line-style-completion/  — mark a line+order as complete`,
+    requestFormat: "json",
+    response: z.void(),
+  },
+  {
+    method: "post",
+    path: "/api/tracking/reports/line-style-completion/",
+    alias: "tracking_reports_line_style_completion_create",
+    description: `GET  /api/tracking/reports/line-style-completion/  — list all manual completions
+POST /api/tracking/reports/line-style-completion/  — mark a line+order as complete`,
+    requestFormat: "json",
+    response: z.void(),
+  },
+  {
+    method: "delete",
+    path: "/api/tracking/reports/line-style-completion/:id/",
+    alias: "tracking_reports_line_style_completion_destroy",
+    description: `DELETE /api/tracking/reports/line-style-completion/{id}/  — undo manual completion`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "id",
+        type: "Path",
+        schema: z.number().int(),
+      },
+    ],
+    response: z.void(),
+  },
+  {
+    method: "get",
     path: "/api/tracking/reports/sewing-dashboard/",
     alias: "tracking_reports_sewing_dashboard_list",
     description: `Get sewing dashboard data with KPIs for all sewing lines and orders`,
@@ -3066,6 +3191,15 @@ token if the refresh token is valid.`,
       },
     ],
     response: z.array(SewingLineDashboardV2),
+  },
+  {
+    method: "get",
+    path: "/api/tracking/reports/sewing-line-dashboard-v2/quality-export/",
+    alias: "tracking_reports_sewing_line_dashboard_v2_quality_export_retrieve",
+    description: `Slide-3 Export: Hourly Quality Monitoring
+Exports: hour, dhu, defects, remarks, defect_breakdown`,
+    requestFormat: "json",
+    response: z.void(),
   },
   {
     method: "post",

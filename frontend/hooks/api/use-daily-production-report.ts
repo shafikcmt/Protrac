@@ -20,6 +20,7 @@ interface UseDailyProductionReportOptions {
   sizes?: string[];
   style_id?: number;
   style_ids?: number[];
+  include_hidden?: boolean;
 }
 
 export const useDailyProductionReport = (
@@ -39,6 +40,7 @@ export const useDailyProductionReport = (
     sizes,
     style_id,
     style_ids,
+    include_hidden,
   } = options;
 
   
@@ -78,6 +80,10 @@ export const useDailyProductionReport = (
   if (date_to) queries.date_to = date_to;
 
   if (report_date) queries.report_date = report_date;
+
+  // Only send include_hidden when explicitly enabled; the backend defaults to
+  // false and hidden rows never affect summary totals either way.
+  if (include_hidden) queries.include_hidden = true;
 
   const reportQuery = apiHooks.useGet(
     "/api/tracking/reports/daily-production/",

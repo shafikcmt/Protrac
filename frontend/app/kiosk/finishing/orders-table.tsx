@@ -242,9 +242,9 @@ export function OrdersTable({ groups, isLoading, summaryStats, qcPassRate }: Ord
           </div>
         </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
           {/* Column headers */}
-          <div className="flex items-center shrink-0 px-0 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60">
+          <div className="flex items-center shrink-0 px-0 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400 border-b border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/60">
             <div className="w-12 flex items-center justify-center">
               <Checkbox
                 checked={
@@ -259,7 +259,7 @@ export function OrdersTable({ groups, isLoading, summaryStats, qcPassRate }: Ord
             <span className="w-24 shrink-0">Status</span>
             <span className="w-16 shrink-0 text-right">Input</span>
             <span className="w-16 shrink-0 text-right">Output</span>
-            <span className="w-16 shrink-0 text-right text-amber-500">WIP</span>
+            <span className="w-16 shrink-0 text-right text-amber-600 dark:text-amber-400">WIP</span>
             <span className="w-16 shrink-0 text-right text-green-600">Done%</span>
             <span className="w-8 shrink-0" />
           </div>
@@ -343,7 +343,7 @@ export function OrdersTable({ groups, isLoading, summaryStats, qcPassRate }: Ord
                           <span className="w-16 shrink-0 text-right tabular-nums text-sm text-gray-700 dark:text-slate-200">
                             {order.total_output.toLocaleString()}
                           </span>
-                          <span className="w-16 shrink-0 text-right tabular-nums text-sm font-bold text-amber-500 dark:text-amber-400">
+                          <span className="w-16 shrink-0 text-right tabular-nums text-sm font-bold text-amber-600 dark:text-amber-400">
                             {order.total_wip.toLocaleString()}
                           </span>
                           <span className="w-16 shrink-0 text-right tabular-nums text-sm font-bold text-green-600 dark:text-green-400">
@@ -357,55 +357,58 @@ export function OrdersTable({ groups, isLoading, summaryStats, qcPassRate }: Ord
                     <AccordionPrimitive.Content className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
                       <div className="pl-12 pr-4 pb-3 pt-1">
                         {/* Size breakdown table */}
-                        <div className="rounded-lg border border-gray-100 dark:border-slate-700 overflow-hidden">
+                        <div className="rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden shadow-sm">
                           <table className="w-full text-sm">
                             <thead>
-                              <tr className="bg-gray-50 dark:bg-slate-800 text-[11px] uppercase tracking-wide font-semibold text-gray-400 dark:text-slate-500">
-                                <th className="px-3 py-1.5 text-left">Size</th>
-                                <th className="px-3 py-1.5 text-right">Input</th>
-                                <th className="px-3 py-1.5 text-right">Output</th>
-                                <th className="px-3 py-1.5 text-right">WIP</th>
-                                <th className="px-3 py-1.5 text-right">Done%</th>
+                              <tr className="bg-gray-100/70 dark:bg-slate-800 text-[11px] uppercase tracking-wider font-semibold text-gray-500 dark:text-slate-400">
+                                <th className="px-3 py-2 text-left">Size</th>
+                                <th className="px-3 py-2 text-right">Input</th>
+                                <th className="px-3 py-2 text-right">Output</th>
+                                <th className="px-3 py-2 text-right">WIP</th>
+                                <th className="px-3 py-2 text-right">Done%</th>
                               </tr>
                             </thead>
                             <tbody>
                               {order.sizes.map((s, i) => (
                                 <tr
                                   key={i}
-                                  className="border-t border-gray-100 dark:border-slate-700"
+                                  className={cn(
+                                    "border-t border-gray-100 dark:border-slate-800",
+                                    i % 2 === 1 && "bg-gray-50/60 dark:bg-slate-800/40"
+                                  )}
                                 >
-                                  <td className="px-3 py-1.5 font-semibold text-gray-900 dark:text-white">
+                                  <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">
                                     {s.size_name}
                                   </td>
-                                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-700 dark:text-slate-200">
+                                  <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-slate-200">
                                     {s.input.toLocaleString()}
                                   </td>
-                                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-700 dark:text-slate-200">
+                                  <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-slate-200">
                                     {s.output.toLocaleString()}
                                   </td>
-                                  <td className="px-3 py-1.5 text-right tabular-nums font-bold text-amber-500 dark:text-amber-400">
+                                  <td className="px-3 py-2 text-right tabular-nums font-bold text-amber-600 dark:text-amber-400">
                                     {s.wip.toLocaleString()}
                                   </td>
-                                  <td className="px-3 py-1.5 text-right tabular-nums font-bold text-green-600 dark:text-green-400">
+                                  <td className="px-3 py-2 text-right tabular-nums font-bold text-green-600 dark:text-green-400">
                                     {s.rate.toFixed(0)}%
                                   </td>
                                 </tr>
                               ))}
                               {order.sizes.length > 1 && (
-                                <tr className="border-t-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 font-black">
-                                  <td className="px-3 py-1.5 text-gray-900 dark:text-white">
+                                <tr className="border-t-2 border-gray-200 dark:border-slate-600 bg-gray-100 dark:bg-slate-800 font-black">
+                                  <td className="px-3 py-2 text-gray-900 dark:text-white uppercase text-xs tracking-wide">
                                     Total
                                   </td>
-                                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-900 dark:text-white">
+                                  <td className="px-3 py-2 text-right tabular-nums text-gray-900 dark:text-white">
                                     {order.total_input.toLocaleString()}
                                   </td>
-                                  <td className="px-3 py-1.5 text-right tabular-nums text-gray-900 dark:text-white">
+                                  <td className="px-3 py-2 text-right tabular-nums text-gray-900 dark:text-white">
                                     {order.total_output.toLocaleString()}
                                   </td>
-                                  <td className="px-3 py-1.5 text-right tabular-nums text-amber-500 dark:text-amber-400">
+                                  <td className="px-3 py-2 text-right tabular-nums text-amber-600 dark:text-amber-400">
                                     {order.total_wip.toLocaleString()}
                                   </td>
-                                  <td className="px-3 py-1.5 text-right tabular-nums text-green-600 dark:text-green-400">
+                                  <td className="px-3 py-2 text-right tabular-nums text-green-600 dark:text-green-400">
                                     {ratePct}%
                                   </td>
                                 </tr>

@@ -26,27 +26,89 @@ interface StatsCardsProps {
   };
 }
 
+type AccentKey = "blue" | "green" | "amber" | "purple" | "teal";
+
+const ACCENT: Record<
+  AccentKey,
+  { bar: string; wash: string; label: string; dot: string; glow: string }
+> = {
+  blue: {
+    bar: "from-blue-400 to-blue-600",
+    wash: "from-blue-50/80 dark:from-blue-500/10",
+    label: "text-blue-600 dark:text-blue-400",
+    dot: "bg-blue-500",
+    glow: "group-hover:shadow-blue-500/10",
+  },
+  green: {
+    bar: "from-emerald-400 to-green-600",
+    wash: "from-emerald-50/80 dark:from-emerald-500/10",
+    label: "text-emerald-600 dark:text-emerald-400",
+    dot: "bg-emerald-500",
+    glow: "group-hover:shadow-emerald-500/10",
+  },
+  amber: {
+    bar: "from-amber-400 to-orange-500",
+    wash: "from-amber-50/80 dark:from-amber-500/10",
+    label: "text-amber-600 dark:text-amber-400",
+    dot: "bg-amber-500",
+    glow: "group-hover:shadow-amber-500/10",
+  },
+  purple: {
+    bar: "from-violet-400 to-purple-600",
+    wash: "from-violet-50/80 dark:from-violet-500/10",
+    label: "text-purple-600 dark:text-purple-400",
+    dot: "bg-violet-500",
+    glow: "group-hover:shadow-violet-500/10",
+  },
+  teal: {
+    bar: "from-teal-400 to-cyan-600",
+    wash: "from-teal-50/80 dark:from-teal-500/10",
+    label: "text-teal-600 dark:text-teal-400",
+    dot: "bg-teal-500",
+    glow: "group-hover:shadow-teal-500/10",
+  },
+};
+
 interface StatCardProps {
   label: string;
   value: string;
-  topBorderClass: string;
-  labelColorClass: string;
+  accent: AccentKey;
 }
 
-function StatCard({ label, value, topBorderClass, labelColorClass }: StatCardProps) {
+function StatCard({ label, value, accent }: StatCardProps) {
+  const a = ACCENT[accent];
   return (
     <div
       className={cn(
-        "rounded-xl border border-gray-200 dark:border-slate-700",
-        "bg-white dark:bg-slate-800",
-        "px-6 py-5 flex flex-col justify-between min-h-[140px] border-t-4",
-        topBorderClass
+        "group relative overflow-hidden rounded-2xl",
+        "border border-gray-200/80 dark:border-slate-700/80",
+        "bg-white dark:bg-slate-800/90",
+        "px-6 py-5 flex flex-col justify-between min-h-[140px]",
+        "shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg",
+        a.glow
       )}
     >
-      <span className={cn("text-sm font-bold uppercase tracking-widest", labelColorClass)}>
+      {/* Accent top bar */}
+      <div className={cn("absolute inset-x-0 top-0 h-1 bg-gradient-to-r", a.bar)} />
+      {/* Subtle corner wash */}
+      <div
+        className={cn(
+          "pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full blur-2xl",
+          "bg-gradient-to-br to-transparent opacity-70",
+          a.wash
+        )}
+      />
+
+      <span
+        className={cn(
+          "relative flex items-center gap-2 text-sm font-bold uppercase tracking-[0.18em]",
+          a.label
+        )}
+      >
+        <span className={cn("h-1.5 w-1.5 rounded-full", a.dot)} />
         {label}
       </span>
-      <span className="text-6xl font-black tabular-nums leading-none text-gray-900 dark:text-white">
+      <span className="relative text-6xl font-black tabular-nums leading-none tracking-tight text-gray-900 dark:text-white">
         {value}
       </span>
     </div>
@@ -75,32 +137,27 @@ export function StatsCards({ chartData, summaryStats }: StatsCardsProps) {
       <StatCard
         label="Total Input"
         value={summaryStats.totalInput.toLocaleString()}
-        topBorderClass="border-t-blue-500"
-        labelColorClass="text-blue-600 dark:text-blue-400"
+        accent="blue"
       />
       <StatCard
         label="Total Output"
         value={summaryStats.totalOutput.toLocaleString()}
-        topBorderClass="border-t-green-500"
-        labelColorClass="text-green-600 dark:text-green-400"
+        accent="green"
       />
       <StatCard
         label="Total WIP"
         value={summaryStats.totalWip.toLocaleString()}
-        topBorderClass="border-t-amber-500"
-        labelColorClass="text-amber-600 dark:text-amber-400"
+        accent="amber"
       />
       <StatCard
         label="Completion"
         value={completionPct}
-        topBorderClass="border-t-purple-500"
-        labelColorClass="text-purple-600 dark:text-purple-400"
+        accent="purple"
       />
       <StatCard
         label="QC Pass Rate"
         value={qcPassRate !== null ? `${qcPassRate.toFixed(1)}%` : "N/A"}
-        topBorderClass="border-t-teal-500"
-        labelColorClass="text-teal-600 dark:text-teal-400"
+        accent="teal"
       />
     </div>
   );

@@ -80,6 +80,14 @@ export function ProductionReportFilters({
     "/api/tracking/productionlines/"
   );
 
+  // The report only covers sewing lines, so the dropdown should only offer
+  // sewing lines (hide cutting/finishing). The backend list endpoint doesn't
+  // filter by line_type, so we filter client-side on the serialized field.
+  const sewingLines =
+    productionLines?.results?.filter(
+      (line: any) => line.line_type === "sewing"
+    ) ?? [];
+
   const { data: buyers } = apiHooks.useGet("/api/tracking/buyers/");
 
   const { data: styles } = apiHooks.useGet("/api/tracking/styles/");
@@ -233,7 +241,7 @@ export function ProductionReportFilters({
   };
 
   const selectedProductionLines =
-    productionLines?.results?.filter(
+    sewingLines.filter(
       (line: any) =>
         filters.production_line_id === line.id ||
         filters.production_line_ids?.includes(line.id)
@@ -379,9 +387,9 @@ export function ProductionReportFilters({
                       </div>
                       All Lines
                     </CommandItem>
-                    {productionLines?.results?.map((line) => {
+                    {sewingLines.map((line: any) => {
                       const isSelected = selectedProductionLines.some(
-                        (sl) => sl.id === line.id
+                        (sl: any) => sl.id === line.id
                       );
                       return (
                         <CommandItem

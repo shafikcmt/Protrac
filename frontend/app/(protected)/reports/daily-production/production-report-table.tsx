@@ -1,7 +1,13 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { MoreHorizontal, CheckCircle2, AlertTriangle } from "lucide-react";
+import {
+  MoreHorizontal,
+  CheckCircle2,
+  AlertTriangle,
+  EyeOff,
+  Eye,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   Table,
@@ -43,7 +49,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { markStyleComplete } from "@/hooks/api/use-line-style-completion";
+import {
+  useMarkStyleComplete,
+  useUndoStyleComplete,
+} from "@/hooks/api/use-line-style-completion";
 
 interface ProductionReportTableProps {
   reportData: any;
@@ -57,6 +66,12 @@ interface PendingCompletion {
   items: Array<{ order_id: number; production_line_id: number; size: string; color: string }>;
 }
 
+interface PendingUnhide {
+  lineName: string;
+  styleName: string;
+  completionIds: number[];
+}
+
 type Metric = { day: number; cumulative: number };
 
 export function ProductionReportTable({
@@ -65,24 +80,46 @@ export function ProductionReportTable({
   refetch,
 }: ProductionReportTableProps) {
   const [pendingCompletion, setPendingCompletion] = useState<PendingCompletion | null>(null);
-  const [isCompleting, setIsCompleting] = useState(false);
+  const [pendingUnhide, setPendingUnhide] = useState<PendingUnhide | null>(null);
+  const markComplete = useMarkStyleComplete();
+  const undoComplete = useUndoStyleComplete();
+  const isCompleting = markComplete.isPending;
+  const isUnhiding = undoComplete.isPending;
 
   const handleMarkComplete = async () => {
     if (!pendingCompletion) return;
-    setIsCompleting(true);
     try {
       for (const item of pendingCompletion.items) {
-        await markStyleComplete(item.production_line_id, item.order_id);
+        await markComplete.mutateAsync({
+          production_line: item.production_line_id,
+          order: item.order_id,
+        });
       }
       toast.success(
-        `${pendingCompletion.styleName} on ${pendingCompletion.lineName} marked as complete`
+        `${pendingCompletion.styleName} on ${pendingCompletion.lineName} hidden from dashboards`
       );
       refetch?.();
     } catch (e: any) {
-      toast.error(`Failed to mark complete: ${e?.message ?? "Unknown error"}`);
+      toast.error(`Failed to hide: ${e?.message ?? "Unknown error"}`);
     } finally {
-      setIsCompleting(false);
       setPendingCompletion(null);
+    }
+  };
+
+  const handleUnhide = async () => {
+    if (!pendingUnhide) return;
+    try {
+      for (const id of pendingUnhide.completionIds) {
+        await undoComplete.mutateAsync(id);
+      }
+      toast.success(
+        `${pendingUnhide.styleName} on ${pendingUnhide.lineName} is visible again`
+      );
+      refetch?.();
+    } catch (e: any) {
+      toast.error(`Failed to unhide: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setPendingUnhide(null);
     }
   };
   if (isLoading) {
@@ -113,7 +150,13 @@ export function ProductionReportTable({
     );
   }
 
+  // Visible (active) groups drive the numbers shown and the buyer subtotals —
+  // they must exclude hidden rows so the table matches the backend summary.
   const ordersByBuyer: Record<string, any[]> = {};
+  // Hidden (manually-completed) groups are only present when include_hidden was
+  // requested; they are rendered greyed-out with an "Unhide" action and never
+  // contribute to any subtotal.
+  const hiddenByBuyer: Record<string, any[]> = {};
 
   const ensureMetric = (obj: any, key: string) => {
     if (!obj[key]) obj[key] = { day: 0, cumulative: 0 } satisfies Metric;
@@ -125,22 +168,26 @@ export function ProductionReportTable({
       const style = order.style || "UNKNOWN";
       const lineName = order.line || line?.production_line_name || "UNKNOWN";
 
-      if (!ordersByBuyer[buyer]) ordersByBuyer[buyer] = [];
+      const isHidden = !!order.is_hidden;
+      const targetByBuyer = isHidden ? hiddenByBuyer : ordersByBuyer;
+      if (!targetByBuyer[buyer]) targetByBuyer[buyer] = [];
 
       const key = `${lineName}||${style}`;
-      let acc = ordersByBuyer[buyer]!.find((x) => x.__key === key);
+      let acc = targetByBuyer[buyer]!.find((x) => x.__key === key);
 
       if (!acc) {
         acc = {
           __key: key,
           __items: [],
+          __completionIds: [] as number[],
           line: lineName,
           buyer,
           style,
+          is_hidden: isHidden,
           order_quantity: 0,
           input: 0,
           working_days: order.working_days ?? 1,
-          working_hours: order.working_hours ?? 8,
+          working_hours: order.working_hours ?? null,
           front: { day: 0, cumulative: 0 },
           back: { day: 0, cumulative: 0 },
           sleeve: { day: 0, cumulative: 0 },
@@ -162,10 +209,13 @@ export function ProductionReportTable({
           dhu_average: 0,
         };
 
-        ordersByBuyer[buyer]!.push(acc);
+        targetByBuyer[buyer]!.push(acc);
       }
 
       acc.__items.push(order);
+      if (isHidden && order.completion_id != null) {
+        acc.__completionIds.push(order.completion_id);
+      }
       acc.order_quantity += Number(order.order_quantity || 0);
       acc.input += Number(order.input || 0);
       if (order.needs_manual_complete) acc.needs_manual_complete = true;
@@ -210,6 +260,19 @@ export function ProductionReportTable({
       acc.dhu_average =
         acc.__dhuAvgDen > 0 ? acc.__dhuAvgNum / acc.__dhuAvgDen : 0;
     });
+  });
+
+  // Combined render list per buyer: visible groups first, then hidden ones
+  // (greyed). Buyer subtotals below still use the visible groups only.
+  const displayByBuyer: Record<string, any[]> = {};
+  const allBuyers = Array.from(
+    new Set([...Object.keys(ordersByBuyer), ...Object.keys(hiddenByBuyer)])
+  );
+  allBuyers.forEach((b) => {
+    displayByBuyer[b] = [
+      ...(ordersByBuyer[b] || []),
+      ...(hiddenByBuyer[b] || []),
+    ];
   });
 
   const formatNumber = (num: number) => (Number(num) || 0).toLocaleString();
@@ -327,7 +390,7 @@ export function ProductionReportTable({
             </TableHeader>
 
             <TableBody>
-              {Object.entries(ordersByBuyer).map(([buyer, orders]) => (
+              {Object.entries(displayByBuyer).map(([buyer, orders]) => (
                 <Fragment key={buyer}>
                   {orders.map((order, index) => {
                     const hasDetails = (order.__items?.length || 0) > 1;
@@ -336,7 +399,9 @@ export function ProductionReportTable({
                       <Fragment key={`${buyer}-${order.__key}-${index}`}>
                         <TableRow
                           className={
-                            order.is_pending_transition
+                            order.is_hidden
+                              ? "bg-muted/40 text-muted-foreground opacity-70"
+                              : order.is_pending_transition
                               ? "bg-amber-50 dark:bg-amber-950/30"
                               : undefined
                           }
@@ -456,7 +521,9 @@ export function ProductionReportTable({
                             {order.working_days}
                           </TableCell>
                           <TableCell className="text-right">
-                            {Number(order.working_hours || 0).toFixed(2)}
+                            {order.working_hours == null
+                              ? "-"
+                              : Number(order.working_hours).toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
                             {formatNumber(order.input)}
@@ -550,55 +617,83 @@ export function ProductionReportTable({
                           </TableCell>
 
                           <TableCell className="text-xs">
-                            {order.is_pending_transition && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="mb-1 inline-flex w-fit cursor-default items-center text-amber-600 dark:text-amber-400">
-                                    <AlertTriangle className="h-4 w-4 shrink-0" />
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-[260px]">
-                                  <div className="font-medium">
-                                    Pending {formatNumber(order.pending_quantity || 0)} pcs
-                                  </div>
-                                  <div className="text-muted-foreground">
-                                    {order.remarks
-                                      ? order.remarks.replace(/\s*\|\s*/g, " · ")
-                                      : "New style started on this line · Manual completion required"}
-                                  </div>
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                            {order.needs_manual_complete && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
+                            <div className="flex items-center gap-1">
+                              {order.is_pending_transition && !order.is_hidden && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="mb-1 inline-flex w-fit cursor-default items-center text-amber-600 dark:text-amber-400">
+                                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-[260px]">
+                                    <div className="font-medium">
+                                      Pending {formatNumber(order.pending_quantity || 0)} pcs
+                                    </div>
+                                    <div className="text-muted-foreground">
+                                      {order.remarks
+                                        ? order.remarks.replace(/\s*\|\s*/g, " · ")
+                                        : "New style started on this line · Manual completion required"}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+
+                              {order.is_hidden ? (
+                                <div className="flex items-center gap-2">
+                                  <Badge
+                                    variant="outline"
+                                    className="border-muted-foreground/40 text-[10px] font-medium uppercase"
+                                  >
+                                    Hidden
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 gap-1 px-2 text-xs"
+                                    disabled={isUnhiding}
                                     onClick={() =>
-                                      setPendingCompletion({
+                                      setPendingUnhide({
                                         lineName: order.line,
                                         styleName: order.style,
-                                        items: (order.__items || [])
-                                          .filter((it: any) => it.needs_manual_complete)
-                                          .map((it: any) => ({
+                                        completionIds: (order.__completionIds || []).filter(
+                                          (id: number | null | undefined) => id != null
+                                        ),
+                                      })
+                                    }
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                    Unhide
+                                  </Button>
+                                </div>
+                              ) : (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setPendingCompletion({
+                                          lineName: order.line,
+                                          styleName: order.style,
+                                          items: (order.__items || []).map((it: any) => ({
                                             order_id: it.order_id,
                                             production_line_id: it.production_line_id,
                                             size: it.size ?? "",
                                             color: it.color ?? "",
                                           })),
-                                      })
-                                    }
-                                  >
-                                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                                    Mark Complete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
+                                        })
+                                      }
+                                    >
+                                      <EyeOff className="mr-2 h-4 w-4" />
+                                      Hide from dashboards
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       </Fragment>
@@ -612,7 +707,9 @@ export function ProductionReportTable({
 
                     <TableCell className="text-right">
                       {formatNumber(
-                        orders.reduce((sum, o) => sum + Number(o.order_quantity || 0), 0)
+                        orders
+                          .filter((o) => !o.is_hidden)
+                          .reduce((sum, o) => sum + Number(o.order_quantity || 0), 0)
                       )}
                     </TableCell>
 
@@ -620,7 +717,9 @@ export function ProductionReportTable({
 
                     <TableCell className="text-right">
                       {formatNumber(
-                        orders.reduce((sum, o) => sum + Number(o.input || 0), 0)
+                        orders
+                          .filter((o) => !o.is_hidden)
+                          .reduce((sum, o) => sum + Number(o.input || 0), 0)
                       )}
                     </TableCell>
 
@@ -628,15 +727,16 @@ export function ProductionReportTable({
 
                     <TableCell className="text-right text-xs">
                       {formatNumber(
-                        orders.reduce((sum, o) => sum + Number(o.output?.day || 0), 0)
+                        orders
+                          .filter((o) => !o.is_hidden)
+                          .reduce((sum, o) => sum + Number(o.output?.day || 0), 0)
                       )}
                     </TableCell>
                     <TableCell className="text-right text-xs">
                       {formatNumber(
-                        orders.reduce(
-                          (sum, o) => sum + Number(o.output?.cumulative || 0),
-                          0
-                        )
+                        orders
+                          .filter((o) => !o.is_hidden)
+                          .reduce((sum, o) => sum + Number(o.output?.cumulative || 0), 0)
                       )}
                     </TableCell>
 
@@ -674,7 +774,7 @@ export function ProductionReportTable({
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="font-medium text-muted-foreground">Daily Input</p>
+                  <p className="font-medium text-muted-foreground">Total Input</p>
                   <p className="text-lg font-bold">
                     {formatNumber(reportData.summary.daily_input)}
                   </p>
@@ -718,14 +818,15 @@ export function ProductionReportTable({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Mark Style as Complete?</AlertDialogTitle>
+          <AlertDialogTitle>Hide this line / style?</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div>
               <p>
                 This will hide{" "}
                 <strong>{pendingCompletion?.styleName}</strong> on{" "}
-                <strong>{pendingCompletion?.lineName}</strong> from
-                today&apos;s report.
+                <strong>{pendingCompletion?.lineName}</strong> from this report,
+                the sewing v3 kiosk and the assembly-tracking screen. No
+                production data is deleted — you can unhide it at any time.
               </p>
               {(pendingCompletion?.items?.length ?? 0) > 1 && (
                 <ul className="mt-2 list-disc pl-4 text-sm space-y-1">
@@ -742,7 +843,32 @@ export function ProductionReportTable({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isCompleting}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={handleMarkComplete} disabled={isCompleting}>
-            {isCompleting ? "Saving…" : "Mark Complete"}
+            {isCompleting ? "Hiding…" : "Hide"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog
+      open={!!pendingUnhide}
+      onOpenChange={(open) => {
+        if (!open) setPendingUnhide(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Unhide this line / style?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will bring{" "}
+            <strong>{pendingUnhide?.styleName}</strong> on{" "}
+            <strong>{pendingUnhide?.lineName}</strong> back to this report, the
+            sewing v3 kiosk and the assembly-tracking screen.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isUnhiding}>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleUnhide} disabled={isUnhiding}>
+            {isUnhiding ? "Unhiding…" : "Unhide"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

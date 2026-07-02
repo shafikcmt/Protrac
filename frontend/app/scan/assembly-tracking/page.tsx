@@ -3,6 +3,7 @@
 import { AssemblyTrackingScanForm } from "@/components/scanner/assembly-tracking-scan-form";
 import { AssemblyTrackingScanFeedback } from "@/components/scanner/assembly-tracking-scan-feedback";
 import { AssemblyTrackingInfo } from "@/components/scanner/assembly-tracking-info";
+import { AssemblyDailySummary } from "@/components/scan/AssemblyDailySummary";
 import { useAssemblyTrackingScanner } from "./use-assembly-tracking-scanner";
 
 export default function AssemblyTrackingScannerPage() {
@@ -41,6 +42,9 @@ export default function AssemblyTrackingScannerPage() {
           error={scanError}
           onClear={resetScanResult}
         />
+
+        {/* Today's summary — shown once a scan has succeeded */}
+        {lastScanResult?.success && <AssemblyDailySummary />}
       </div>
 
       {/* Right Column - Assembly Tracking Info (2/3) */}

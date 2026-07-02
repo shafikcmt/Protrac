@@ -29,6 +29,7 @@ from tracking.api import (
     BulkBundleCreateView,
     GarmentListView,
     GarmentDetailView,
+    OverviewStatsView,
     SewingDashboardView,
     FinishingDashboardView,
     DailyProductionReportView,
@@ -40,6 +41,7 @@ from tracking.api import (
     part_receive_info,
     assembly_tracking_issue_scan,
     assembly_tracking_issue_info,
+    assembly_daily_summary,
     sewing_qc_scan,
     sewing_qc_info,
     finishing_qc_scan,
@@ -125,6 +127,8 @@ urlpatterns = [
     # Garment endpoints
     path("garments/", GarmentListView.as_view(), name="garment-list-create"),
     path("garments/<int:pk>/", GarmentDetailView.as_view(), name="garment-detail"),
+    # Dashboard stats endpoint (lightweight counts)
+    path("stats/overview/", OverviewStatsView.as_view(), name="stats-overview"),
     # Scan endpoints
     path("scan/bundle-issue/", bundle_issue_scan, name="scan-bundle-issue"),
     path(
@@ -150,6 +154,12 @@ urlpatterns = [
         "info/garment-issue-for-assembly/",
         assembly_tracking_issue_info,
         name="scan-garment-issue-for-assembly-info",
+    ),
+    # Assembly daily summary endpoint
+    path(
+        "assembly/daily-summary/",
+        assembly_daily_summary,
+        name="assembly-daily-summary",
     ),
     path("info/sewing-qc/", sewing_qc_info, name="scan-sewing-qc-info"),
     path(

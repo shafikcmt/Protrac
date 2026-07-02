@@ -7,8 +7,7 @@ import { createApiClient } from "@/types/api/client";
 const getBackendApiBaseUrl = () => {
   return (
     process.env.NEXT_PUBLIC_BACKEND_URL?.replace(/\/+$/, "") ??
-    // "http://192.168.245.25:3000" // TODO: Replace hardcoded URL
-    "http://127.0.0.1:8000" // TODO: Replace hardcoded URL
+    "http://192.168.245.25:8000"
   );
 };
 

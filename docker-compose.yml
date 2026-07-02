@@ -27,10 +27,6 @@ services:
       - static_volume_v2:/app/staticfiles
     env_file:
       - ./backend/.env
-    environment:
-      # DATABASE_URL: postgres://postgres:postgres@db_v2:5432/postgres_v2
-      DATABASE_URL: postgres://postgres:postgres@192.168.245.25:5432/postgres_v2
-
     expose:
       - "8080"
     depends_on:
@@ -57,8 +53,8 @@ services:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - static_volume_v2:/staticfiles:ro
     ports:
-      - "3000:80"    # Frontend
-      - "8000:8080"  # Backend/Admin
+      - "3000:80"
+      - "8000:8080"
     depends_on:
       - backend_v2
       - frontend_v2

@@ -64,9 +64,10 @@ function OrderCard({ order }: OrderCardProps) {
   return (
     <motion.div
       className={cn(
-        "h-full rounded-xl border border-gray-200 dark:border-slate-700",
-        "bg-white dark:bg-slate-800",
+        "h-full rounded-2xl border border-gray-200/80 dark:border-slate-700/80",
+        "bg-white dark:bg-slate-800/90",
         "border-l-[6px] p-5 flex flex-col gap-3",
+        "shadow-sm ring-1 ring-black/[0.02] dark:ring-white/[0.03]",
         status === "done" && "opacity-80",
         STATUS_BORDER_CLASS[status]
       )}
@@ -76,7 +77,7 @@ function OrderCard({ order }: OrderCardProps) {
       {/* Header: order number + badge */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-3xl font-black text-gray-900 dark:text-white leading-tight truncate">
+          <div className="text-3xl font-black text-gray-900 dark:text-white leading-tight truncate tracking-tight">
             {order.order_number}
           </div>
           <div className="text-sm text-gray-500 dark:text-slate-400 truncate mt-0.5">
@@ -93,14 +94,22 @@ function OrderCard({ order }: OrderCardProps) {
         </span>
       </div>
 
-      {/* Delivery */}
-      <div className={cn("text-sm font-semibold", STATUS_DATE_CLASS[status])}>
-        {formattedDate ? `📦 Delivery: ${formattedDate}` : "📦 No delivery date"}
+      {/* Delivery chip */}
+      <div>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-semibold",
+            "bg-gray-50 dark:bg-slate-900/50 ring-1 ring-inset ring-gray-200/70 dark:ring-slate-700/70",
+            STATUS_DATE_CLASS[status]
+          )}
+        >
+          📦 {formattedDate ? `Delivery: ${formattedDate}` : "No delivery date"}
+        </span>
       </div>
 
       {/* Size breakdown */}
-      <div className="border-t border-gray-200 dark:border-slate-600 pt-3 flex-1 space-y-2">
-        <div className="grid grid-cols-5 text-xs font-bold uppercase tracking-wide text-gray-400 dark:text-slate-500 mb-2">
+      <div className="border-t border-gray-200 dark:border-slate-700 pt-3 flex-1 flex flex-col">
+        <div className="grid grid-cols-5 text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500 px-2 pb-1.5">
           <span>Size</span>
           <span className="text-right">In</span>
           <span className="text-right">Out</span>
@@ -108,36 +117,46 @@ function OrderCard({ order }: OrderCardProps) {
           <span className="text-right">Done%</span>
         </div>
 
-        {order.sizes.map((s, i) => (
-          <div key={i} className="grid grid-cols-5 text-base tabular-nums">
-            <span className="font-semibold text-gray-900 dark:text-white truncate">
-              {s.size_name}
-            </span>
-            <span className="text-right font-semibold text-gray-900 dark:text-white">
-              {s.input.toLocaleString()}
-            </span>
-            <span className="text-right font-semibold text-gray-900 dark:text-white">
-              {s.output.toLocaleString()}
-            </span>
-            <span className="text-right font-bold text-lg text-amber-500 dark:text-amber-400">
-              {s.wip.toLocaleString()}
-            </span>
-            <span className="text-right font-bold text-green-600 dark:text-green-400">
-              {s.rate.toFixed(0)}%
-            </span>
-          </div>
-        ))}
+        <div className="flex-1 space-y-0.5">
+          {order.sizes.map((s, i) => (
+            <div
+              key={i}
+              className={cn(
+                "grid grid-cols-5 items-center text-base tabular-nums rounded-lg px-2 py-1",
+                i % 2 === 1 && "bg-gray-50/70 dark:bg-slate-900/40"
+              )}
+            >
+              <span className="font-semibold text-gray-900 dark:text-white truncate">
+                {s.size_name}
+              </span>
+              <span className="text-right font-semibold text-gray-700 dark:text-slate-200">
+                {s.input.toLocaleString()}
+              </span>
+              <span className="text-right font-semibold text-gray-700 dark:text-slate-200">
+                {s.output.toLocaleString()}
+              </span>
+              <span className="text-right font-bold text-lg text-amber-600 dark:text-amber-400">
+                {s.wip.toLocaleString()}
+              </span>
+              <span className="text-right font-bold text-green-600 dark:text-green-400">
+                {s.rate.toFixed(0)}%
+              </span>
+            </div>
+          ))}
+        </div>
 
         {order.sizes.length > 1 && (
-          <div className="grid grid-cols-5 text-base tabular-nums border-t border-gray-200 dark:border-slate-600 pt-2 mt-1 font-black text-lg">
-            <span className="text-gray-900 dark:text-white">Total</span>
+          <div className="grid grid-cols-5 items-center text-lg tabular-nums rounded-lg px-2 py-1.5 mt-1.5 font-black bg-gray-100/80 dark:bg-slate-900/70 ring-1 ring-inset ring-gray-200/70 dark:ring-slate-700/70">
+            <span className="text-gray-900 dark:text-white uppercase text-sm tracking-wide">
+              Total
+            </span>
             <span className="text-right text-gray-900 dark:text-white">
               {order.total_input.toLocaleString()}
             </span>
             <span className="text-right text-gray-900 dark:text-white">
               {order.total_output.toLocaleString()}
             </span>
-            <span className="text-right text-amber-500 dark:text-amber-400">
+            <span className="text-right text-amber-600 dark:text-amber-400">
               {order.total_wip.toLocaleString()}
             </span>
             <span className="text-right text-green-600 dark:text-green-400">
@@ -225,11 +244,14 @@ export function OrdersCarousel({ groups }: OrdersCarouselProps) {
         {totalSlides > 1 && (
           <button
             onClick={goPrev}
+            aria-label="Previous slide"
             className="absolute left-0 top-1/2 -translate-y-1/2 z-20 -ml-4
-              flex items-center justify-center w-10 h-10 rounded-full shadow-lg
-              bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600
+              flex items-center justify-center w-11 h-11 rounded-full shadow-lg
+              bg-white/90 dark:bg-slate-700/90 backdrop-blur
+              ring-1 ring-gray-200 dark:ring-slate-600
               text-gray-700 dark:text-slate-200
-              hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+              hover:bg-white dark:hover:bg-slate-600 hover:scale-105 hover:text-blue-600 dark:hover:text-blue-400
+              active:scale-95 transition-all"
           >
             <ChevronLeft className="h-5 w-5" />
           </button>
@@ -264,11 +286,14 @@ export function OrdersCarousel({ groups }: OrdersCarouselProps) {
         {totalSlides > 1 && (
           <button
             onClick={goNext}
+            aria-label="Next slide"
             className="absolute right-0 top-1/2 -translate-y-1/2 z-20 -mr-4
-              flex items-center justify-center w-10 h-10 rounded-full shadow-lg
-              bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600
+              flex items-center justify-center w-11 h-11 rounded-full shadow-lg
+              bg-white/90 dark:bg-slate-700/90 backdrop-blur
+              ring-1 ring-gray-200 dark:ring-slate-600
               text-gray-700 dark:text-slate-200
-              hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors"
+              hover:bg-white dark:hover:bg-slate-600 hover:scale-105 hover:text-blue-600 dark:hover:text-blue-400
+              active:scale-95 transition-all"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
@@ -282,11 +307,12 @@ export function OrdersCarousel({ groups }: OrdersCarouselProps) {
             <button
               key={i}
               onClick={() => goTo(i)}
+              aria-label={`Go to slide ${i + 1}`}
               className={cn(
-                "rounded-full transition-all duration-200",
+                "rounded-full transition-all duration-300",
                 i === slide
-                  ? "w-6 h-2.5 bg-blue-500"
-                  : "w-2.5 h-2.5 bg-gray-300 dark:bg-slate-600 hover:bg-gray-400 dark:hover:bg-slate-500"
+                  ? "w-7 h-2.5 bg-gradient-to-r from-blue-500 to-blue-600 shadow-sm shadow-blue-500/40"
+                  : "w-2.5 h-2.5 bg-gray-300 dark:bg-slate-600 hover:bg-gray-400 dark:hover:bg-slate-500 hover:scale-110"
               )}
             />
           ))}

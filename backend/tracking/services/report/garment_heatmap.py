@@ -85,26 +85,17 @@ def get_garment_heatmap_data(
     if date_to:
         orders_qs = orders_qs.filter(created_at__lte=date_to)
         
-    # Apply active_only filter using delivery date
+    # Apply active_only filter using delivery date only (Group B rule). The
+    # heatmap intentionally keeps showing an order/style until its delivery date
+    # has passed and does NOT honour manual "Mark Complete" (LineStyleCompletion)
+    # — that manual hiding applies only to the Daily Production Report, the
+    # sewing v3 kiosk and the assembly-tracking scan surfaces (Group A).
     if active_only:
         from datetime import date
         today = date.today()
         orders_qs = orders_qs.filter(
             Q(delivery_date__isnull=True) | Q(delivery_date__gt=today)
         )
-        # Hide styles that are hidden in the Daily Production Report — both
-        # manual completions and auto-completed (fully output) styles — using
-        # the shared line-visibility source of truth, so the heatmap stays
-        # consistent with every other surface.
-        from tracking.models import ProductionLine
-        from tracking.models.constants import LineType
-        from tracking.services.line_visibility import get_hidden_order_ids_for_line
-
-        hidden_order_ids: set = set()
-        for line in ProductionLine.objects.filter(line_type=LineType.SEWING):
-            hidden_order_ids |= get_hidden_order_ids_for_line(line)
-        if hidden_order_ids:
-            orders_qs = orders_qs.exclude(id__in=hidden_order_ids)
 
     # Build result
     orders_data = []
