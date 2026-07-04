@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 export interface QuickSelectDefect {
   id: number;
@@ -37,6 +39,8 @@ export function DefectsQuickSelect({
   onDefectsChange,
   tone,
 }: DefectsQuickSelectProps) {
+  const [search, setSearch] = React.useState("");
+
   // Only defects that carry a register code, ordered by that code.
   const coded = React.useMemo(
     () =>
@@ -45,6 +49,18 @@ export function DefectsQuickSelect({
         .sort((a, b) => (a.code || "").localeCompare(b.code || "")),
     [defects]
   );
+
+  // Client-side filter over the already-fetched list — match on code or label
+  // (case-insensitive) so the operator can narrow the grid instead of scrolling.
+  const visible = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return coded;
+    return coded.filter(
+      (d) =>
+        (d.code || "").toLowerCase().includes(q) ||
+        d.name.toLowerCase().includes(q)
+    );
+  }, [coded, search]);
 
   const toggle = (id: number) => {
     onDefectsChange(
@@ -81,9 +97,31 @@ export function DefectsQuickSelect({
         </div>
       </div>
 
+      {/* Search / filter — code or label, client-side over the fetched list */}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search defect code or label…"
+          autoComplete="off"
+          className="h-9 pl-8 pr-8"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            aria-label="Clear search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
       <div className="max-h-[320px] overflow-y-auto rounded-lg border bg-card/40 p-2">
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-          {coded.map((defect) => {
+          {visible.map((defect) => {
             const isSelected = selectedDefects.includes(defect.id);
             return (
               <button
@@ -120,6 +158,11 @@ export function DefectsQuickSelect({
         {coded.length === 0 && (
           <p className="px-1 py-2 text-sm text-muted-foreground">
             No defect codes configured.
+          </p>
+        )}
+        {coded.length > 0 && visible.length === 0 && (
+          <p className="px-1 py-2 text-sm text-muted-foreground">
+            No defect matches &ldquo;{search}&rdquo;.
           </p>
         )}
       </div>

@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { schemas } from "@/types/api/client";
+import { extractErrorMessage } from "@/lib/error-utils";
 import { z } from "zod";
 
 type SewingQCScanResponse = z.infer<typeof schemas.SewingQCScanResponse>;
@@ -69,7 +70,11 @@ export function QCScanFeedback({
           <Alert variant="destructive">
             <XCircle className="h-4 w-4" />
             <AlertDescription>
-              {error?.message || "An error occurred during scanning"}
+              {/* Show the backend's specific reason (e.g. "Garment already
+                  passed sewing QC…") rather than axios's generic "Request
+                  failed with status code 400", so a rejected scan explains
+                  itself instead of failing silently. */}
+              {extractErrorMessage(error)}
             </AlertDescription>
           </Alert>
         </CardContent>
