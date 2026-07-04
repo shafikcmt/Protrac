@@ -24,6 +24,23 @@ class DailySummaryGarmentSerializer(serializers.Serializer):
     time = serializers.CharField()
 
 
+class DailySummaryActiveOrderSerializer(serializers.Serializer):
+    """The active (most recently scanned) order for the line today."""
+
+    order_number = serializers.CharField()
+    style = serializers.CharField()
+
+
+class DailySummaryGarmentCellSerializer(serializers.Serializer):
+    """One garment cell in the active order's serial grid (heatmap-style)."""
+
+    sequence_number = serializers.IntegerField()
+    tracking_code = serializers.CharField()
+    status = serializers.CharField(
+        help_text="pending_assembly | issued_for_assembly"
+    )
+
+
 class DailySummaryHourSerializer(serializers.Serializer):
     """One hourly bucket: bundles received vs garments assembly-complete."""
 
@@ -48,4 +65,6 @@ class AssemblyDailySummaryResponseSerializer(serializers.Serializer):
     parts_issued_count = serializers.IntegerField()
     parts_total_count = serializers.IntegerField()
     recent_garments = DailySummaryGarmentSerializer(many=True)
+    active_order = DailySummaryActiveOrderSerializer(allow_null=True)
+    garments_grid = DailySummaryGarmentCellSerializer(many=True)
     hourly = DailySummaryHourSerializer(many=True)

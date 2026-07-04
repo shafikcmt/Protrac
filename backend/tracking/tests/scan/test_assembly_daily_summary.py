@@ -179,6 +179,45 @@ class TestAssemblyDailySummaryHourly:
         assert sum(r["assembly_complete"] for r in after["hourly"]) == 0
         assert after["total_assemble"] == 0
 
+    def test_garments_grid_shows_pending_and_issued_today_only(self, setup):
+        """The active order's serial grid is a fresh-each-day worklist: garments
+        still pending + garments issued for assembly TODAY are both shown (issued
+        stay visible all day), while garments issued on a PREVIOUS day drop off."""
+        order = setup["order"]
+        scanner = setup["scanner"]
+
+        today = timezone.localdate()
+        now_today = datetime.combine(today, time(9, 0), tzinfo=DHAKA)
+        yesterday_dt = now_today - timezone.timedelta(days=1)
+
+        # Pending — never issued.
+        GarmentFactory(order=order, sequence_number=1, issued_for_assembly_at=None)
+        # Issued today — stays visible in the grid all day.
+        issued_today = GarmentFactory(
+            order=order, sequence_number=2, issued_for_assembly_at=now_today
+        )
+        # Issued yesterday — must drop off (fresh reset each day).
+        GarmentFactory(
+            order=order, sequence_number=3, issued_for_assembly_at=yesterday_dt
+        )
+
+        # A garment-issue scan today makes this the active order for the grid.
+        self._scan_at(
+            scanner, time(9, 0),
+            event=ScanEventType.GARMENT_ISSUED_FOR_ASSEMBLY,
+            garment=issued_today,
+        )
+
+        result = get_assembly_daily_summary(setup["user"])
+
+        assert result["active_order"]["order_number"] == order.order_number
+        grid = result["garments_grid"]
+        # Only the pending (#1) and issued-today (#2) garments; yesterday's #3 gone.
+        assert [g["sequence_number"] for g in grid] == [1, 2]
+        by_seq = {g["sequence_number"]: g["status"] for g in grid}
+        assert by_seq[1] == "pending_assembly"
+        assert by_seq[2] == "issued_for_assembly"
+
     def test_no_line_target_returns_empty_hourly(self, setup):
         """With no daily target configured for the line/date, the hourly block is
         empty so the UI can show a 'no daily target' fallback (mirrors sewing v3).

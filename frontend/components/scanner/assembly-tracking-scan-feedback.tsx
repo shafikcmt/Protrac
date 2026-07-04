@@ -163,7 +163,7 @@ export function AssemblyTrackingScanFeedback({
               </p>
             </AlertDescription>
           </Alert>
-        )}{" "}
+        )}
         {!result && !error && (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
             <div className="rounded-full border-2 border-dashed border-muted-foreground/30 p-6 mb-3">

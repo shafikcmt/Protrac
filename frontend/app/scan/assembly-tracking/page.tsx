@@ -28,35 +28,38 @@ export default function AssemblyTrackingScannerPage() {
   } = useAssemblyTrackingScanner();
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Left Column - Scan Input and Feedback (1/3) */}
-      <div className="space-y-6">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_2fr_1.2fr] lg:items-start">
+      {/* Zone 1 — Scanner + Scan Result, natural (compact) heights */}
+      <div className="space-y-4">
         <AssemblyTrackingScanForm
           onSubmit={submitScan}
           isLoading={isScanning}
           getEndpointInfo={getEndpointInfo}
         />
-        
+
         <AssemblyTrackingScanFeedback
           result={lastScanResult}
           error={scanError}
           onClear={resetScanResult}
         />
-
-        {/* Today's summary — ALWAYS visible for a valid assembly-tracking user.
-            The component renders its own loading skeleton, data, or a visible
-            error/empty message, so it must never be gated behind a scan. */}
-        <AssemblyDailySummary />
       </div>
 
-      {/* Right Column - Assembly Tracking Info (2/3) */}
-      <div className="lg:col-span-2">
+      {/* Zone 2 — Assembly Tracking History (internal scroll list) */}
+      <div>
         <AssemblyTrackingInfo
           assemblyPartReceiveData={assemblyPartReceiveInfo}
           garmentIssueData={garmentIssueInfo}
           isLoadingAssemblyInfo={isLoadingAssemblyInfo}
           isLoadingGarmentInfo={isLoadingGarmentInfo}
         />
+      </div>
+
+      {/* Zone 3 — Today's summary, split into 2 equal-height stacked cards
+          (top section + hourly table). ALWAYS visible for a valid
+          assembly-tracking user; the component renders its own loading
+          skeleton, data, or a visible error/empty message. */}
+      <div className="space-y-4">
+        <AssemblyDailySummary />
       </div>
     </div>
   );

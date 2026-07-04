@@ -86,18 +86,18 @@ export function AssemblyTrackingScanForm({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Workflow className="h-5 w-5" />
+    <Card className="py-4 gap-3">
+      <CardHeader className="px-4">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Workflow className="h-4 w-4" />
           Assembly Tracking Scanner
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4">
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(handleSubmit)}
-            className="space-y-4">
+            className="space-y-3">
             {/* Tracking Code Input */}
             <FormField
               control={form.control}
@@ -127,8 +127,7 @@ export function AssemblyTrackingScanForm({
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading}
-              size="lg">
+              disabled={isLoading}>
               {isLoading 
                 ? "Processing..." 
                 : currentEndpointInfo

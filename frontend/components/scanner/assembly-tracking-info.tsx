@@ -328,10 +328,10 @@ export function AssemblyTrackingInfo({
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <History className="h-5 w-5" />
+    <Card className="py-4 gap-3">
+      <CardHeader className="px-4">
+        <CardTitle className="text-base flex items-center gap-2">
+          <History className="h-4 w-4" />
           Assembly Tracking History
           {(assemblyPartReceiveData as any)?.scanner_info && (
             <Badge variant="outline" className="ml-auto">
@@ -341,7 +341,7 @@ export function AssemblyTrackingInfo({
         </CardTitle>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="px-4">
         <Tabs defaultValue="assembly-parts" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="assembly-parts" className="flex items-center gap-2">
@@ -366,7 +366,7 @@ export function AssemblyTrackingInfo({
           </TabsList>
 
           <TabsContent value="assembly-parts">
-            <ScrollArea className="h-[460px] pr-3">
+            <ScrollArea className="h-[420px] pr-3">
               {isLoadingAssemblyInfo ? (
                 <LoadingSkeleton />
               ) : visibleGroups.length === 0 ? (
@@ -388,7 +388,7 @@ export function AssemblyTrackingInfo({
 
           {/* Garment issues tab unchanged */}
           <TabsContent value="garment-issues">
-            <ScrollArea className="h-[400px]">
+            <ScrollArea className="h-[420px]">
               {isLoadingGarmentInfo ? (
                 <LoadingSkeleton />
               ) : garmentIssues.length === 0 ? (

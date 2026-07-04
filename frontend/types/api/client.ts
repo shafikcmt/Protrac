@@ -49,6 +49,16 @@ const DailySummaryPart = z
 const DailySummaryGarment = z
   .object({ id: z.string(), time: z.string() })
   .passthrough();
+const DailySummaryActiveOrder = z
+  .object({ order_number: z.string(), style: z.string() })
+  .passthrough();
+const DailySummaryGarmentCell = z
+  .object({
+    sequence_number: z.number().int(),
+    tracking_code: z.string(),
+    status: z.string(),
+  })
+  .passthrough();
 const DailySummaryHour = z
   .object({
     hour: z.number().int(),
@@ -67,6 +77,8 @@ const AssemblyDailySummaryResponse = z
     parts_issued_count: z.number().int(),
     parts_total_count: z.number().int(),
     recent_garments: z.array(DailySummaryGarment),
+    active_order: DailySummaryActiveOrder.nullable(),
+    garments_grid: z.array(DailySummaryGarmentCell),
     hourly: z.array(DailySummaryHour),
   })
   .passthrough();
@@ -1183,6 +1195,8 @@ export const schemas = {
   Message,
   DailySummaryPart,
   DailySummaryGarment,
+  DailySummaryActiveOrder,
+  DailySummaryGarmentCell,
   DailySummaryHour,
   AssemblyDailySummaryResponse,
   BundleStatusEnum,

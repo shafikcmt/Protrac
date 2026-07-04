@@ -109,6 +109,44 @@ def get_assembly_daily_summary(
 
     active_order = _resolve_active_order(garment_issue_qs, part_receive_qs)
 
+    # --- Active order's garments relevant to TODAY (serial grid) ---
+    # A per-day worklist that shows the operator's progress through the shift:
+    #   * garments still pending (never issued)              -> "pending_assembly"
+    #   * garments issued for assembly *today*               -> "issued_for_assembly"
+    # An issued garment stays visible all day (not hidden the moment it's issued);
+    # garments issued on a PREVIOUS day drop off so each day starts fresh without
+    # any manual reset. Scoped to summary_date via issued_for_assembly_at's local
+    # date, the same day scoping used for the hourly buckets above. Raw `status`
+    # can't be used (it advances past assembly to sewing/finishing QC), so
+    # `issued_for_assembly_at` is the source of truth. Filtering server-side keeps
+    # the payload small — previous days' issued garments never reach the client.
+    active_order_info = None
+    garments_grid = []
+    if active_order is not None:
+        active_order_info = {
+            "order_number": active_order.order_number,
+            "style": active_order.style.name,
+        }
+        from django.db.models import Q
+
+        today_garments = active_order.garments.filter(
+            Q(issued_for_assembly_at__isnull=True)
+            | Q(issued_for_assembly_at__date=summary_date)
+        ).order_by("sequence_number")
+
+        garments_grid = [
+            {
+                "sequence_number": g.sequence_number,
+                "tracking_code": g.tracking_code,
+                "status": (
+                    "issued_for_assembly"
+                    if g.issued_for_assembly_at is not None
+                    else "pending_assembly"
+                ),
+            }
+            for g in today_garments
+        ]
+
     parts_summary = []
     total_parts_issued = 0
     parts_issued_count = 0
@@ -182,5 +220,7 @@ def get_assembly_daily_summary(
         "parts_issued_count": parts_issued_count,
         "parts_total_count": parts_total_count,
         "recent_garments": recent_garments,
+        "active_order": active_order_info,
+        "garments_grid": garments_grid,
         "hourly": hourly,
     }
