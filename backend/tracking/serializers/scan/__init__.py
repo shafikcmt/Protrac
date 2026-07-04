@@ -25,6 +25,10 @@ from .assembly_daily_summary import (  # noqa
     DailySummaryGarmentSerializer,
     AssemblyDailySummaryResponseSerializer,
 )
+from .sewing_qc_daily_summary import (  # noqa
+    SewingQCTopDefectSerializer,
+    SewingQCDailySummaryResponseSerializer,
+)
 from .sewing_qc import (  # noqa
     SewingQCScanSerializer,
     SewingQCScanResponseSerializer,

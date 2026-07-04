@@ -45,7 +45,7 @@ class PartSerializer(BaseSerializer):
 class DefectSerializer(BaseSerializer):
     class Meta(BaseSerializer.Meta):
         model = Defect
-        fields = ["id", "name", "description", "created_at", "updated_at"]
+        fields = ["id", "code", "name", "description", "created_at", "updated_at"]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 

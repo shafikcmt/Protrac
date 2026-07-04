@@ -13,6 +13,9 @@ from .assembly_tracking_issue import (  # noqa
 from .assembly_daily_summary import (  # noqa
     assembly_daily_summary,
 )
+from .sewing_qc_daily_summary import (  # noqa
+    sewing_qc_daily_summary,
+)
 from .sewing_qc import (  # noqa
     sewing_qc_scan,
     sewing_qc_info,

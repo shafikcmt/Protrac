@@ -5,8 +5,15 @@ import { schemas } from "@/types/api/client";
 import { toast } from "sonner";
 import { extractErrorMessage } from "@/lib/error-utils";
 
-type SewingQCScanRequest = z.infer<typeof schemas.SewingQCScanRequest>;
 type SewingQCScanResponse = z.infer<typeof schemas.SewingQCScanResponse>;
+
+// The form no longer collects a re-evaluation flag — the backend detects
+// re-evaluation automatically from the garment's QC history.
+type SewingQCScanInput = {
+  tracking_code: string;
+  qc_status: "pass" | "fail" | "rework";
+  defect_ids?: number[];
+};
 
 export const useSewingQCScanner = () => {
   const queryClient = useQueryClient();
@@ -32,8 +39,11 @@ export const useSewingQCScanner = () => {
 
   // Sewing QC scan mutation
   const sewingQCMutation = useMutation({
-    mutationFn: async (data: SewingQCScanRequest) => {
-      return api.tracking_scan_sewing_qc_create(data);
+    mutationFn: async (data: SewingQCScanInput) => {
+      return api.tracking_scan_sewing_qc_create({
+        ...data,
+        is_reevaluation: false,
+      });
     },
     onSuccess: (response: SewingQCScanResponse) => {
       toast.success(response.message || "QC check completed successfully");
@@ -50,7 +60,7 @@ export const useSewingQCScanner = () => {
     },
   });
 
-  const submitScan = (data: SewingQCScanRequest) => {
+  const submitScan = (data: SewingQCScanInput) => {
     sewingQCMutation.mutate(data);
   };
 

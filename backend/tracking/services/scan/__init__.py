@@ -10,6 +10,7 @@ from .assembly_tracking_issue import (
     get_assembly_tracking_issue_info,
 )
 from .assembly_daily_summary import get_assembly_daily_summary
+from .sewing_qc_daily_summary import get_sewing_qc_daily_summary
 
 __all__ = [
     # Bundle Issue Scanner
@@ -23,6 +24,8 @@ __all__ = [
     "get_assembly_tracking_issue_info",
     # Assembly Daily Summary
     "get_assembly_daily_summary",
+    # Sewing QC Daily Summary
+    "get_sewing_qc_daily_summary",
     # Sewing QC Scanner
     "process_sewing_qc_scan",
     "get_sewing_qc_info",

@@ -270,6 +270,7 @@ const PatchedColorRequest = z
 const Defect = z
   .object({
     id: z.number().int(),
+    code: z.string().max(10).optional(),
     name: z.string().max(100),
     description: z.string().nullish(),
     created_at: z.string().datetime({ offset: true }).nullable(),
@@ -286,12 +287,14 @@ const PaginatedDefectList = z
   .passthrough();
 const DefectRequest = z
   .object({
+    code: z.string().max(10).optional(),
     name: z.string().min(1).max(100),
     description: z.string().nullish(),
   })
   .passthrough();
 const PatchedDefectRequest = z
   .object({
+    code: z.string().max(10),
     name: z.string().min(1).max(100),
     description: z.string().nullable(),
   })
@@ -1064,6 +1067,22 @@ const PatchedSeasonRequest = z
   .object({ name: z.string().min(1).max(100) })
   .partial()
   .passthrough();
+const SewingQCTopDefect = z
+  .object({ code: z.string(), name: z.string(), count: z.number().int() })
+  .passthrough();
+const SewingQCDailySummaryResponse = z
+  .object({
+    line: z.string(),
+    date: z.string(),
+    total_output: z.number().int(),
+    total_rework: z.number().int(),
+    total_fail: z.number().int(),
+    total_inspected: z.number().int(),
+    total_defects: z.number().int(),
+    dhu: z.number(),
+    top_defects: z.array(SewingQCTopDefect),
+  })
+  .passthrough();
 const Size = z
   .object({
     id: z.number().int(),
@@ -1307,6 +1326,8 @@ export const schemas = {
   PaginatedSeasonList,
   SeasonRequest,
   PatchedSeasonRequest,
+  SewingQCTopDefect,
+  SewingQCDailySummaryResponse,
   Size,
   PaginatedSizeList,
   SizeRequest,
@@ -3435,6 +3456,21 @@ Exports: hour, dhu, defects, remarks, defect_breakdown`,
       },
     ],
     response: z.void(),
+  },
+  {
+    method: "get",
+    path: "/api/tracking/sewing-qc/daily-summary/",
+    alias: "tracking_sewing_qc_daily_summary_retrieve",
+    description: `Today&#x27;s sewing-QC tally for the current user&#x27;s line: output (pass), rework, fail, total defects, DHU%, and a defect-frequency breakdown.`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "date",
+        type: "Query",
+        schema: z.string().optional(),
+      },
+    ],
+    response: SewingQCDailySummaryResponse,
   },
   {
     method: "get",

@@ -3,6 +3,7 @@
 import { SewingQCScanForm } from "@/components/scanner/sewing-qc-scan-form";
 import { QCScanFeedback } from "@/components/scanner/qc-scan-feedback";
 import { SewingQCInfo } from "@/components/scanner/sewing-qc-info";
+import { SewingQCDailySummary } from "@/components/scanner/sewing-qc-daily-summary";
 import { useSewingQCScanner } from "./use-sewing-qc-scanner";
 
 export default function SewingQCScannerPage() {
@@ -24,9 +25,9 @@ export default function SewingQCScannerPage() {
   } = useSewingQCScanner();
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Left Column - Scan Input and Feedback (1/3) */}
-      <div className="space-y-6">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_2fr_1.2fr] lg:items-start">
+      {/* Zone 1 — Scanner + Scan Result */}
+      <div className="space-y-4">
         <SewingQCScanForm
           onSubmit={submitScan}
           isLoading={isScanning}
@@ -40,12 +41,15 @@ export default function SewingQCScannerPage() {
         />
       </div>
 
-      {/* Right Column - Sewing QC Info (2/3) */}
-      <div className="lg:col-span-2">
-        <SewingQCInfo
-          data={sewingQCInfo}
-          isLoading={isLoadingInfo}
-        />
+      {/* Zone 2 — Sewing QC History */}
+      <div>
+        <SewingQCInfo data={sewingQCInfo} isLoading={isLoadingInfo} />
+      </div>
+
+      {/* Zone 3 — Today's QC summary (output / rework / fail / DHU% + top
+          defects). Always visible for a valid sewing-QC user. */}
+      <div className="space-y-4">
+        <SewingQCDailySummary />
       </div>
     </div>
   );

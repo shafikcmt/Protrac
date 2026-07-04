@@ -163,9 +163,13 @@ class TestSewingQCScan:
         setup_data["garment"].refresh_from_db()
         assert setup_data["garment"].status == GarmentStatus.SEWING_QC_REWORK
 
-    def test_sewing_qc_scan_reevaluation(self, api_client, setup_data):
-        """Test reevaluation of already QC'd garment."""
-        # First QC the garment
+    def test_sewing_qc_auto_reevaluation_of_failed_garment(
+        self, api_client, setup_data
+    ):
+        """A previously-failed garment can be re-scanned to pass WITHOUT any
+        manual flag — re-evaluation is detected automatically and it counts as
+        a normal pass (output)."""
+        # Garment previously failed sewing QC.
         setup_data["garment"].status = GarmentStatus.SEWING_QC_FAIL
         setup_data["garment"].save()
 
@@ -175,25 +179,45 @@ class TestSewingQCScan:
         data = {
             "tracking_code": setup_data["garment"].tracking_code,
             "qc_status": QualityCheckStatus.PASS,
-            "is_reevaluation": True,
+            # NOTE: no is_reevaluation flag sent.
         }
 
         response = api_client.post(url, data)
 
-        # Verify API response
+        assert response.status_code == status.HTTP_201_CREATED
+        # Auto-detected as a re-evaluation.
+        assert response.data["is_reevaluation"] is True
+        assert response.data["garment_status"] == GarmentStatus.SEWING_QC_PASS
+
+        setup_data["garment"].refresh_from_db()
+        assert setup_data["garment"].status == GarmentStatus.SEWING_QC_PASS
+
+    def test_sewing_qc_reevaluation_of_reworked_garment(
+        self, api_client, setup_data
+    ):
+        """A garment sent to rework can likewise be re-scanned without a flag."""
+        setup_data["garment"].status = GarmentStatus.SEWING_QC_REWORK
+        setup_data["garment"].save()
+
+        api_client.force_authenticate(user=setup_data["user"])
+        url = reverse("tracking:scan-sewing-qc")
+
+        data = {
+            "tracking_code": setup_data["garment"].tracking_code,
+            "qc_status": QualityCheckStatus.PASS,
+        }
+
+        response = api_client.post(url, data)
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["is_reevaluation"] is True
         assert response.data["garment_status"] == GarmentStatus.SEWING_QC_PASS
 
-        # Verify garment status updated
-        setup_data["garment"].refresh_from_db()
-        assert setup_data["garment"].status == GarmentStatus.SEWING_QC_PASS
-
-    def test_sewing_qc_scan_already_processed_no_reevaluation(
+    def test_sewing_qc_scan_already_passed_is_blocked(
         self, api_client, setup_data
     ):
-        """Test scanning already QC'd garment without reevaluation flag."""
-        # Set garment as already QC'd
+        """An already-passed garment is blocked from re-scanning so output/DHU
+        totals are never double-counted."""
+        # Set garment as already passed (already counted as output).
         setup_data["garment"].status = GarmentStatus.SEWING_QC_PASS
         setup_data["garment"].save()
 
@@ -203,13 +227,11 @@ class TestSewingQCScan:
         data = {
             "tracking_code": setup_data["garment"].tracking_code,
             "qc_status": QualityCheckStatus.PASS,
-            "is_reevaluation": False,
         }
 
         response = api_client.post(url, data)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "already processed" in response.data["error"]
-        assert "reevaluation flag" in response.data["error"]
+        assert "already passed" in response.data["error"]
 
     def test_sewing_qc_scan_wrong_garment_status(self, api_client, setup_data):
         """Test scanning garment with wrong status."""

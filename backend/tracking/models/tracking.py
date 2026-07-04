@@ -242,11 +242,21 @@ class Scanner(BaseModel):
 class Defect(BaseModel):
     """Defect found during quality control."""
 
+    code = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Short defect code from the QC register, e.g. 'A', 'B', 'Aa'.",
+    )
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
 
+    class Meta:
+        ordering = ["code", "name"]
+
     def __str__(self):
-        return self.name
+        return f"{self.code}-{self.name}" if self.code else self.name
 
 
 class Spread(BaseModel):

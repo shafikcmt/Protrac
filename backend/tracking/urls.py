@@ -42,6 +42,7 @@ from tracking.api import (
     assembly_tracking_issue_scan,
     assembly_tracking_issue_info,
     assembly_daily_summary,
+    sewing_qc_daily_summary,
     sewing_qc_scan,
     sewing_qc_info,
     finishing_qc_scan,
@@ -160,6 +161,11 @@ urlpatterns = [
         "assembly/daily-summary/",
         assembly_daily_summary,
         name="assembly-daily-summary",
+    ),
+    path(
+        "sewing-qc/daily-summary/",
+        sewing_qc_daily_summary,
+        name="sewing-qc-daily-summary",
     ),
     path("info/sewing-qc/", sewing_qc_info, name="scan-sewing-qc-info"),
     path(
