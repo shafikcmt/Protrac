@@ -1070,6 +1070,16 @@ const PatchedSeasonRequest = z
 const SewingQCTopDefect = z
   .object({ code: z.string(), name: z.string(), count: z.number().int() })
   .passthrough();
+const SewingQCActiveOrder = z
+  .object({ order_number: z.string(), style: z.string() })
+  .passthrough();
+const SewingQCGarmentCell = z
+  .object({
+    sequence_number: z.number().int(),
+    tracking_code: z.string(),
+    status: z.string(),
+  })
+  .passthrough();
 const SewingQCDailySummaryResponse = z
   .object({
     line: z.string(),
@@ -1077,10 +1087,13 @@ const SewingQCDailySummaryResponse = z
     total_output: z.number().int(),
     total_rework: z.number().int(),
     total_fail: z.number().int(),
+    pass_rate: z.number(),
     total_inspected: z.number().int(),
     total_defects: z.number().int(),
     dhu: z.number(),
     top_defects: z.array(SewingQCTopDefect),
+    active_order: SewingQCActiveOrder.nullable(),
+    garments_grid: z.array(SewingQCGarmentCell),
   })
   .passthrough();
 const Size = z

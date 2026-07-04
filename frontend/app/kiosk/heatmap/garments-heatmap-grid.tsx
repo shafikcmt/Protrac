@@ -119,7 +119,7 @@ const GarmentBox = ({ garment }: GarmentBoxProps) => {
       {garment.sequence_number}
 
       {/* Enhanced Tooltip */}
-      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-black text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10 shadow-lg">
+      <div className="pointer-events-none absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-black text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10 shadow-lg">
         <div className="font-medium">Garment #{garment.sequence_number}</div>
         <div className="text-gray-300">{garment.status_display}</div>
         <div className="text-gray-400 text-xs mt-1">

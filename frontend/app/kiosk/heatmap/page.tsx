@@ -48,7 +48,7 @@ export default function GarmentsHeatmapPage() {
   }, [isRefetching, showRefreshIndicator]);
 
   return (
-    <div className="flex-1 space-y-4 p-4 pt-6">
+    <div className="h-full overflow-y-auto space-y-4 p-4 pt-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

@@ -3,8 +3,11 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarDays, Factory } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { apiHooks } from "@/lib/api";
+import {
+  SerialHeatmapGrid,
+  type SerialStatusConfig,
+} from "@/components/scan/serial-heatmap-grid";
 
 /** Today's date as YYYY-MM-DD in Dhaka time, independent of the browser tz. */
 function getDhakaToday(): string {
@@ -31,46 +34,20 @@ function formatHeaderDate(iso: string): string {
 
 /* Two-status colour coding for the serial heatmap, mirroring the kiosk heatmap's
    visual language (pending = grey, issued = blue) but only the two assembly
-   states this card cares about. */
-const SERIAL_ISSUED = {
-  box: "bg-blue-500 text-white",
-  dot: "bg-blue-500",
-  label: "Issued for Assembly",
-} as const;
-const SERIAL_PENDING = {
-  box: "bg-gray-400 text-white",
-  dot: "bg-gray-400",
-  label: "Pending Assembly",
-} as const;
-function serialStatus(status: string) {
-  return status === "issued_for_assembly" ? SERIAL_ISSUED : SERIAL_PENDING;
-}
-
-/** One compact garment cell — small rounded square with its serial number,
-    coloured by assembly status. Same visual language as the kiosk heatmap's
-    GarmentBox, shrunk to fit the summary column. */
-function SerialBox({
-  sequence_number,
-  tracking_code,
-  status,
-}: {
-  sequence_number: number;
-  tracking_code: string;
-  status: string;
-}) {
-  const s = serialStatus(status);
-  return (
-    <div
-      className={cn(
-        "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[10px] font-medium tabular-nums transition-transform hover:scale-110",
-        s.box
-      )}
-      title={`#${sequence_number} · ${s.label} · ${tracking_code}`}
-    >
-      {sequence_number}
-    </div>
-  );
-}
+   states this card cares about. Legend order = issued first, then pending. */
+const ASSEMBLY_STATUS_CONFIG: SerialStatusConfig = {
+  issued_for_assembly: {
+    box: "bg-blue-500 text-white",
+    dot: "bg-blue-500",
+    label: "Issued today",
+  },
+  pending_assembly: {
+    box: "bg-gray-400 text-white",
+    dot: "bg-gray-400",
+    label: "Pending",
+  },
+};
+const ASSEMBLY_LEGEND_ORDER = ["issued_for_assembly", "pending_assembly"];
 
 export function AssemblyDailySummary() {
   const date = React.useMemo(() => getDhakaToday(), []);
@@ -207,47 +184,15 @@ export function AssemblyDailySummary() {
 
         {/* Today's serial worklist — pending + issued-today for the active order,
             ascending serial, coloured by status (grey = pending, blue = issued
-            today). Same square visual language as the kiosk heatmap. Bounded
-            height + internal scroll so a long list never expands the page /
-            distorts the 3-column grid. */}
-        {garments_grid.length > 0 ? (
-          <div className="space-y-2">
-            {/* Legend + counts */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-blue-500" />
-                Issued today
-                <span className="font-semibold tabular-nums text-foreground">
-                  {issuedCount}
-                </span>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-gray-400" />
-                Pending
-                <span className="font-semibold tabular-nums text-foreground">
-                  {pendingCount}
-                </span>
-              </span>
-            </div>
-            {/* Grid of serial squares (scrolls internally) */}
-            <div className="max-h-[340px] overflow-y-auto rounded-lg border bg-card/40 p-2">
-              <div className="flex flex-wrap gap-1">
-                {garments_grid.map((g) => (
-                  <SerialBox
-                    key={g.tracking_code}
-                    sequence_number={g.sequence_number}
-                    tracking_code={g.tracking_code}
-                    status={g.status}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No garments for this order today.
-          </p>
-        )}
+            today). Same square visual language as the sewing-QC grid + kiosk
+            heatmap; bounded height + internal scroll so a long list never expands
+            the page / distorts the 3-column grid. */}
+        <SerialHeatmapGrid
+          cells={garments_grid}
+          statusConfig={ASSEMBLY_STATUS_CONFIG}
+          legendOrder={ASSEMBLY_LEGEND_ORDER}
+          emptyMessage="No garments for this order today."
+        />
       </CardContent>
       </Card>
 

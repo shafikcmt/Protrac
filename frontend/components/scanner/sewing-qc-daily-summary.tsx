@@ -5,6 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarDays, Factory } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiHooks } from "@/lib/api";
+import {
+  SerialHeatmapGrid,
+  type SerialStatusConfig,
+} from "@/components/scan/serial-heatmap-grid";
 
 /** Today's date as YYYY-MM-DD in Dhaka time, independent of the browser tz. */
 function getDhakaToday(): string {
@@ -26,6 +30,33 @@ function formatHeaderDate(iso: string): string {
     year: "numeric",
   });
 }
+
+/* Three-status colour coding for the serial heatmap, matching the QC status
+   colour language (issued = blue, pass = green, rework = orange). Fail and Rework
+   are merged server-side into the single "sewing_qc_rework" bucket, so there is no
+   separate Fail colour here. Legend order: issued, pass, rework. */
+const SEWING_QC_STATUS_CONFIG: SerialStatusConfig = {
+  issued_for_assembly: {
+    box: "bg-blue-500 text-white",
+    dot: "bg-blue-500",
+    label: "Issued",
+  },
+  sewing_qc_pass: {
+    box: "bg-green-500 text-white",
+    dot: "bg-green-500",
+    label: "Pass",
+  },
+  sewing_qc_rework: {
+    box: "bg-orange-500 text-white",
+    dot: "bg-orange-500",
+    label: "Rework",
+  },
+};
+const SEWING_QC_LEGEND_ORDER = [
+  "issued_for_assembly",
+  "sewing_qc_pass",
+  "sewing_qc_rework",
+];
 
 /* Stat tile colour language mirrors the QC status buttons on the scan form:
    output = green (pass), rework = orange, fail = red. DHU% is a neutral blue
@@ -117,9 +148,11 @@ export function SewingQCDailySummary() {
     line,
     total_output,
     total_rework,
-    total_fail,
+    pass_rate,
     dhu,
     top_defects = [],
+    active_order,
+    garments_grid = [],
   } = data;
 
   const maxDefect = top_defects.reduce((m, d) => Math.max(m, d.count), 0);
@@ -140,8 +173,37 @@ export function SewingQCDailySummary() {
         <div className="grid grid-cols-2 gap-2">
           <StatTile label="Total Output" value={total_output} tone="green" />
           <StatTile label="Total Rework" value={total_rework} tone="orange" />
-          <StatTile label="Total Fail" value={total_fail} tone="red" />
-          <StatTile label="DHU %" value={dhu.toFixed(2)} tone="blue" />
+          <StatTile label="Pass Rate %" value={pass_rate.toFixed(2)} tone="blue" />
+          <StatTile label="DHU %" value={dhu.toFixed(2)} tone="red" />
+        </div>
+
+        {/* Active order's serial-status grid — the currently running style/order
+            on this line, each garment coloured by sewing-QC status: blue = issued
+            (awaiting QC), green = pass (today only), orange = rework/fail (carried
+            forward until resolved). Same square visual language + internal scroll
+            as the assembly-tracking grid. */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Serial Status
+            </div>
+            {active_order && (
+              <div className="min-w-0 text-right">
+                <div className="truncate text-xs font-semibold">
+                  {active_order.order_number}
+                </div>
+                <div className="truncate text-[11px] text-muted-foreground">
+                  {active_order.style}
+                </div>
+              </div>
+            )}
+          </div>
+          <SerialHeatmapGrid
+            cells={garments_grid}
+            statusConfig={SEWING_QC_STATUS_CONFIG}
+            legendOrder={SEWING_QC_LEGEND_ORDER}
+            emptyMessage="No active order on this line today."
+          />
         </div>
 
         {/* Top defects — how often each code was tagged today */}

@@ -17,6 +17,16 @@ import {
 } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { DefectsQuickSelect } from "./defects-quick-select";
 
 const sewingQCFormSchema = z.object({
@@ -24,6 +34,10 @@ const sewingQCFormSchema = z.object({
   qc_status: z.enum(["pass", "fail", "rework"]),
   defect_ids: z.array(z.number()).optional(),
 });
+
+// A single garment rarely carries more than a couple of defect codes; selecting
+// more than this many is likely an accidental multi-select and prompts a confirm.
+const DEFECT_CONFIRM_THRESHOLD = 3;
 
 type FormData = z.infer<typeof sewingQCFormSchema>;
 
@@ -46,6 +60,7 @@ export function SewingQCScanForm({
 }: SewingQCScanFormProps) {
   const trackingCodeRef = useRef<HTMLInputElement>(null);
   const [selectedDefects, setSelectedDefects] = useState<number[]>([]);
+  const [pendingData, setPendingData] = useState<FormData | null>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(sewingQCFormSchema),
@@ -72,7 +87,7 @@ export function SewingQCScanForm({
     }, 100);
   };
 
-  const handleSubmit = (data: FormData) => {
+  const performSubmit = (data: FormData) => {
     // Re-evaluation is now detected automatically on the backend from the
     // garment's QC history — no manual flag. Defects only apply to fail/rework.
     onSubmit({
@@ -80,6 +95,15 @@ export function SewingQCScanForm({
       defect_ids: needsDefects ? selectedDefects : [],
     });
     resetForm();
+  };
+
+  const handleSubmit = (data: FormData) => {
+    // Guard against an accidental bulk defect select before it's committed.
+    if (needsDefects && selectedDefects.length > DEFECT_CONFIRM_THRESHOLD) {
+      setPendingData(data);
+      return;
+    }
+    performSubmit(data);
   };
 
   const getStatusColor = (status: string, isSelected: boolean) => {
@@ -97,6 +121,7 @@ export function SewingQCScanForm({
   };
 
   return (
+    <>
     <Card className="py-4 gap-3">
       <CardHeader className="px-4">
         <CardTitle className="text-base flex items-center gap-2">
@@ -209,5 +234,38 @@ export function SewingQCScanForm({
         </Form>
       </CardContent>
     </Card>
+
+    {/* Unusual-count confirm — fires when more defects than the threshold are
+        selected for a single garment, catching an accidental bulk select
+        before the scan is submitted. */}
+    <AlertDialog
+      open={pendingData !== null}
+      onOpenChange={(open) => {
+        if (!open) setPendingData(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Confirm defect selection</AlertDialogTitle>
+          <AlertDialogDescription>
+            You&apos;ve selected {selectedDefects.length} defects for one
+            garment — that&apos;s unusual (normally 1–2). Continue anyway?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Go back</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              const data = pendingData;
+              setPendingData(null);
+              if (data) performSubmit(data);
+            }}
+          >
+            Continue
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

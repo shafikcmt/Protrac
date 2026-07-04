@@ -97,6 +97,39 @@ export function DefectsQuickSelect({
         </div>
       </div>
 
+      {/* Selected defects — each removable via its own ✕, so a mistakenly
+          added defect can be dropped without hunting for it in the grid. */}
+      {selectedDefects.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 rounded-lg border bg-card/40 p-2">
+          {selectedDefects.map((id) => {
+            const defect = coded.find((d) => d.id === id);
+            if (!defect) return null;
+            return (
+              <span
+                key={id}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-white",
+                  tone === "fail" ? "bg-red-600" : "bg-orange-600"
+                )}
+              >
+                <span className="font-bold tabular-nums">{defect.code}</span>
+                <span className="max-w-[7rem] truncate">
+                  {shortLabel(defect)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggle(id)}
+                  aria-label={`Remove ${defect.name}`}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-white/25"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* Search / filter — code or label, client-side over the fetched list */}
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
