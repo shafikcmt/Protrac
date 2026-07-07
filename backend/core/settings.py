@@ -74,6 +74,10 @@ INSTALLED_APPS = UNFOLD_APPS + DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # --- MIDDLEWARE ---
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise serves static files (incl. Unfold admin CSS/JS) in every
+    # environment, so the admin stays styled even when DEBUG=False. Must sit
+    # directly after SecurityMiddleware.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -113,6 +117,16 @@ MEDIA_URL = "media/"
 # --- STATIC AND MEDIA ROOTS ---
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# --- STORAGES (Django 5.2) ---
+# WhiteNoise's compressed + manifest storage for hashed, gzip/brotli static
+# files in production. Media/FileField stays on the default filesystem storage.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    },
+}
 
 # --- DATABASE CONFIGURATION ---
 # Use SQLite if no database URL is provided
