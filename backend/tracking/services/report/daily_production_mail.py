@@ -64,6 +64,7 @@ _THIN = Side(style="thin", color="D1D5DB")
 BORDER = Border(top=_THIN, left=_THIN, bottom=_THIN, right=_THIN)
 PCT_FMT = '0.00"%"'
 EM_DASH = "–"
+NAVY = "1B3A5C"  # brand navy for the title banner, matching the logo wordmark
 
 LAST_COL = 30  # 7 single + 11 two-column groups + Remarks
 
@@ -240,29 +241,38 @@ def build_daily_production_xlsx(
     for i, width in enumerate(_COL_WIDTHS, start=1):
         ws.column_dimensions[get_column_letter(i)].width = width
 
-    # ── Title block (rows 1-4) + spacer (row 5) ──
-    # Optional top-left logo floats over rows 1-4; when present, the text block
-    # shifts right (col 4) so it sits beside the logo instead of behind it. No
-    # rows are added, so freeze panes / row indices below stay put.
-    title_col = 1
+    # ── Title block (rows 1-4) + two spacer rows (5-6) ──
+    # Each title line is merged across the full table width and centered, giving
+    # a modern banner. An optional logo floats top-left; the centered text sits
+    # in the middle columns, so the two never overlap.
     logo_path = _logo_path()
     if logo_path:
         try:
             img = XLImage(logo_path)
             img.width, img.height = LOGO_WIDTH_PX, LOGO_HEIGHT_PX
             ws.add_image(img, "A1")
-            title_col = 4
         except Exception:  # noqa: BLE001 — a bad image must not break the file
             logger.warning("Could not embed logo into Excel from %s", logo_path)
-            title_col = 1
 
-    ws.cell(row=1, column=title_col, value=COMPANY_NAME).font = Font(bold=True, size=14)
-    ws.cell(row=2, column=title_col, value="Daily Production Report").font = Font(bold=True, size=12)
-    ws.cell(row=3, column=title_col, value=f"Report Date: {report_date}").font = Font(size=10, color="374151")
-    ws.cell(row=4, column=title_col, value="Generated automatically by Production Tracking Software").font = Font(size=10, color="6B7280")
+    _title_lines = [
+        (COMPANY_NAME, Font(bold=True, size=17, color=NAVY)),
+        ("Daily Production Report", Font(bold=True, size=13, color=NAVY)),
+        (f"Report Date: {report_date}", Font(size=10, color="6B7280")),
+        ("Generated automatically by Production Tracking Software",
+         Font(size=10, italic=True, color="9CA3AF")),
+    ]
+    for r, (text, font) in enumerate(_title_lines, start=1):
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=LAST_COL)
+        cell = ws.cell(row=r, column=1, value=text)
+        cell.font = font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    # Thin gray bottom border across the last title row separates the banner from
+    # the table below (applied per-cell since borders don't span a merge).
+    for c in range(1, LAST_COL + 1):
+        ws.cell(row=4, column=c).border = Border(bottom=_THIN)
 
-    # ── Two-tier header (rows 6-7) ──
-    group_row, sub_row = 6, 7
+    # ── Two-tier header (rows 7-8; rows 5-6 are spacers) ──
+    group_row, sub_row = 7, 8
     for col, label in _SINGLE_COLS:
         ws.merge_cells(start_row=group_row, start_column=col, end_row=sub_row, end_column=col)
         ws.cell(row=group_row, column=col, value=label)
@@ -275,11 +285,11 @@ def build_daily_production_xlsx(
         for c in range(1, LAST_COL + 1):
             _style_header_cell(ws.cell(row=r, column=c))
 
-    ws.freeze_panes = "A8"  # keep title + headers visible on scroll
+    ws.freeze_panes = "A9"  # keep title + headers visible on scroll
 
     # ── Data rows grouped by buyer, each followed by a subtotal ──
     display = build_display_by_buyer(report_data)
-    row_idx = 8
+    row_idx = 9
 
     def write_data_row(order: dict):
         nonlocal row_idx
@@ -358,18 +368,26 @@ def build_daily_production_xlsx(
         summary.get("daily_packed", 0),
         _num(summary.get("overall_efficiency", 0)),
     ]
-    for i, label in enumerate(footer_labels, start=1):
-        _style_header_cell(ws.cell(row=row_idx, column=i, value=label))
-    # Taller row so wrapped labels (e.g. "Daily Inspection") show cleanly on two
-    # lines instead of looking cramped — without widening the shared data columns.
-    ws.row_dimensions[row_idx].height = 30
-    for i, value in enumerate(footer_values, start=1):
-        cell = ws.cell(row=row_idx + 1, column=i, value=value)
-        cell.font = BOLD_FONT
-        cell.border = BORDER
-        cell.alignment = Alignment(horizontal="center")
-        if i == 8:
-            cell.number_format = PCT_FMT
+    # Each label/value spans a merged block of 3 data columns (A-C, D-F, …) so
+    # the widest label ("Daily Inspection") fits on ONE line with wrapText off,
+    # without touching the narrow data-column widths above.
+    label_row, value_row = row_idx, row_idx + 1
+    for i, (label, value) in enumerate(zip(footer_labels, footer_values)):
+        start_col = 1 + i * 3
+        end_col = start_col + 2
+        ws.merge_cells(start_row=label_row, start_column=start_col, end_row=label_row, end_column=end_col)
+        ws.merge_cells(start_row=value_row, start_column=start_col, end_row=value_row, end_column=end_col)
+        for c in range(start_col, end_col + 1):
+            lc = ws.cell(row=label_row, column=c)
+            lc.fill, lc.font, lc.border = HEADER_FILL, HEADER_FONT, BORDER
+            vc = ws.cell(row=value_row, column=c)
+            vc.font, vc.border = BOLD_FONT, BORDER
+        label_cell = ws.cell(row=label_row, column=start_col, value=label)
+        label_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        value_cell = ws.cell(row=value_row, column=start_col, value=value)
+        value_cell.alignment = Alignment(horizontal="center")
+        if i == 7:  # Efficiency %
+            value_cell.number_format = PCT_FMT
 
     buffer = BytesIO()
     wb.save(buffer)

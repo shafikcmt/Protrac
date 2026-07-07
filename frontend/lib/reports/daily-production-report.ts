@@ -216,24 +216,36 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
   const LAST_COL = 30;
 
   /* ── Title block ──
-     Optional top-left logo floats over rows 1-4; when present the text block
-     shifts right (col 4) so it sits beside the logo. No rows are added, so the
-     frozen header row index below is unaffected. */
-  const titleCol = COMPANY_LOGO_BASE64 ? 4 : 1;
+     Each line is merged across the full table width and centered for a modern
+     banner. An optional logo floats top-left; the centered text sits in the
+     middle columns, so the two never overlap. */
+  const NAVY = "FF1B3A5C"; // brand navy matching the logo wordmark
   if (COMPANY_LOGO_BASE64) {
     const imageId = workbook.addImage({ base64: COMPANY_LOGO_BASE64, extension: "png" });
     sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 160, height: 73 } });
   }
-  const addTitle = (text: string, font: any) => {
+  const titleLines: Array<[string, any]> = [
+    ["Humana Apparels Pvt. Ltd.", { bold: true, size: 17, color: { argb: NAVY } }],
+    ["Daily Production Report", { bold: true, size: 13, color: { argb: NAVY } }],
+    [`Report Date: ${reportDate}`, { size: 10, color: { argb: "FF6B7280" } }],
+    [`Generated: ${format(new Date(), "MMMM d, yyyy 'at' HH:mm")}`, { italic: true, size: 10, color: { argb: "FF9CA3AF" } }],
+  ];
+  let lastTitleRowNum = 0;
+  titleLines.forEach(([text, font]) => {
     const row = sheet.addRow([]);
-    const cell = row.getCell(titleCol);
+    sheet.mergeCells(row.number, 1, row.number, LAST_COL);
+    const cell = row.getCell(1);
     cell.value = text;
     cell.font = font;
-  };
-  addTitle("Humana Apparels Pvt. Ltd.", { bold: true, size: 14 });
-  addTitle("Daily Production Report", { bold: true, size: 12 });
-  addTitle(`Report Date: ${reportDate}`, { size: 10, color: { argb: "FF374151" } });
-  addTitle(`Generated: ${format(new Date(), "MMMM d, yyyy 'at' HH:mm")}`, { size: 10, color: { argb: "FF6B7280" } });
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    lastTitleRowNum = row.number;
+  });
+  // Thin gray bottom border across the last title row separates banner from table.
+  const titleBorderRow = sheet.getRow(lastTitleRowNum);
+  for (let c = 1; c <= LAST_COL; c++) {
+    titleBorderRow.getCell(c).border = { bottom: { style: "thin", color: { argb: "FFD1D5DB" } } };
+  }
+  sheet.addRow([]); // spacer
   sheet.addRow([]); // spacer
 
   /* ── Two-tier header ──
@@ -409,24 +421,30 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
 
     const fLabelRow = sheet.getRow(footerHeaderRowIdx);
     const fValueRow = sheet.getRow(footerHeaderRowIdx + 1);
-    // Taller row so wrapped labels (e.g. "Daily Inspection") show cleanly on two
-    // lines instead of looking cramped — without widening the shared data columns.
-    fLabelRow.height = 30;
+    // Each label/value spans a merged block of 3 columns (A-C, D-F, …) so the
+    // widest label ("Daily Inspection") fits on ONE line with wrapText off,
+    // without touching the narrow data-column widths above.
     labels.forEach((label, i) => {
-      const cell = fLabelRow.getCell(i + 1);
-      cell.value = label;
-      cell.fill = HEADER_FILL;
-      cell.font = HEADER_FONT;
-      cell.border = BORDER;
-      cell.alignment = { horizontal: "center", wrapText: true };
-    });
-    values.forEach((value, i) => {
-      const cell = fValueRow.getCell(i + 1);
-      cell.value = value;
-      cell.font = BOLD_FONT;
-      cell.border = BORDER;
-      cell.alignment = { horizontal: "center" };
-      if (i === 7) cell.numFmt = PCT_FMT; // Efficiency %
+      const startCol = 1 + i * 3;
+      const endCol = startCol + 2;
+      sheet.mergeCells(fLabelRow.number, startCol, fLabelRow.number, endCol);
+      sheet.mergeCells(fValueRow.number, startCol, fValueRow.number, endCol);
+      for (let c = startCol; c <= endCol; c++) {
+        const lc = fLabelRow.getCell(c);
+        lc.fill = HEADER_FILL;
+        lc.font = HEADER_FONT;
+        lc.border = BORDER;
+        const vc = fValueRow.getCell(c);
+        vc.font = BOLD_FONT;
+        vc.border = BORDER;
+      }
+      const labelCell = fLabelRow.getCell(startCol);
+      labelCell.value = label;
+      labelCell.alignment = { horizontal: "center", vertical: "middle", wrapText: false };
+      const valueCell = fValueRow.getCell(startCol);
+      valueCell.value = values[i];
+      valueCell.alignment = { horizontal: "center" };
+      if (i === 7) valueCell.numFmt = PCT_FMT; // Efficiency %
     });
   }
 
