@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily Production Report</title>
+</head>
+<!-- Inline CSS only: many clients (esp. Outlook) strip <style> blocks. -->
+<body style="margin:0; padding:0; background-color:#f3f4f6; font-family:Arial, Helvetica, sans-serif; color:#111827;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:640px; max-width:100%; background-color:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb;">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#2563eb; padding:20px 28px;">
+              <div style="font-size:18px; font-weight:bold; color:#ffffff;">{{ company_name }}</div>
+              <div style="font-size:14px; color:#dbeafe; margin-top:2px;">Daily Production Report</div>
+              <div style="font-size:13px; color:#bfdbfe; margin-top:6px;">Report Date: {{ report_date }}</div>
+            </td>
+          </tr>
+
+          <!-- Summary metrics -->
+          <tr>
+            <td style="padding:24px 28px 8px 28px;">
+              <div style="font-size:13px; font-weight:bold; text-transform:uppercase; letter-spacing:0.04em; color:#6b7280; margin-bottom:12px;">Summary</div>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                <tr>
+                  <td width="50%" style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Total Lines</td>
+                  <td width="50%" style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right;">{{ summary.total_production_lines }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Total Orders</td>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right;">{{ summary.total_orders }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Order Qty</td>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right;">{{ summary.total_order_quantity }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Total Input</td>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right;">{{ summary.daily_input }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Daily Output</td>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right; color:#059669;">{{ summary.daily_output }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Daily Inspection</td>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right;">{{ summary.daily_inspection }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Daily Packed</td>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right;">{{ summary.daily_packed }}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; font-size:14px; color:#6b7280;">Overall Efficiency</td>
+                  <td style="padding:8px 0; font-size:14px; font-weight:bold; text-align:right; color:#2563eb;">{{ summary.overall_efficiency }}%</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Per-buyer breakdown -->
+          {% if buyer_breakdown %}
+          <tr>
+            <td style="padding:16px 28px 8px 28px;">
+              <div style="font-size:13px; font-weight:bold; text-transform:uppercase; letter-spacing:0.04em; color:#6b7280; margin-bottom:12px;">Output by Buyer</div>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                <tr>
+                  <td style="padding:8px 10px; background-color:#f9fafb; font-size:12px; font-weight:bold; text-transform:uppercase; color:#6b7280; border:1px solid #e5e7eb;">Buyer</td>
+                  <td style="padding:8px 10px; background-color:#f9fafb; font-size:12px; font-weight:bold; text-transform:uppercase; color:#6b7280; border:1px solid #e5e7eb; text-align:right;">Daily Output</td>
+                </tr>
+                {% for row in buyer_breakdown %}
+                <tr>
+                  <td style="padding:8px 10px; font-size:14px; border:1px solid #e5e7eb;">{{ row.buyer }}</td>
+                  <td style="padding:8px 10px; font-size:14px; font-weight:bold; text-align:right; border:1px solid #e5e7eb;">{{ row.daily_output }}</td>
+                </tr>
+                {% endfor %}
+              </table>
+            </td>
+          </tr>
+          {% endif %}
+
+          <!-- Attachment note -->
+          <tr>
+            <td style="padding:16px 28px 24px 28px;">
+              <div style="font-size:13px; color:#374151; background-color:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 14px;">
+                📎 The full line-by-line report is attached as an Excel (.xlsx) file.
+              </div>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:16px 28px; background-color:#f9fafb; border-top:1px solid #e5e7eb;">
+              <div style="font-size:12px; color:#9ca3af; text-align:center;">This is an automated report from Production Tracking Software.</div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

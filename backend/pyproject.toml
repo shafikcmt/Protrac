@@ -22,6 +22,9 @@ django-filter = "^25.1"
 djangorestframework-simplejwt = "^5.5.0"
 gunicorn = "^23.0.0"
 pendulum = "^3.1.0"
+openpyxl = "^3.1.5"
+apscheduler = "^3.11.3"
+pytz = "^2026.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"

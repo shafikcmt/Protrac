@@ -38,3 +38,6 @@ typing_extensions==4.14.1
 tzdata==2025.2
 uritemplate==4.2.0
 openpyxl==3.1.5
+APScheduler==3.11.3
+pytz==2026.2
+tzlocal==5.4.4

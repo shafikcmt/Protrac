@@ -1,0 +1,424 @@
+"""
+Automated Daily Production Report email: server-side Excel generation and send.
+
+The Excel layout deliberately mirrors the frontend "Export Excel" output in
+frontend/lib/reports/daily-production-report.ts — title block, two-tier
+Day/Cumm group headers (including the Lining column), buyer subtotal rows, and a
+grand-total footer — so the emailed file looks identical to what a user
+downloads from the report page. All numbers are pre-computed from the same
+report-data service the API/frontend use; no Excel formulas are written, so
+#REF!/#DIV/0! error classes cannot occur.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import date
+from io import BytesIO
+from typing import Any, Dict, List, Optional
+
+from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+
+from common.utils.time import today
+from tracking.models import MailRecipient
+from tracking.models.mail import RecipientType, ReportType
+from tracking.services.report import get_daily_production_report_data
+
+logger = logging.getLogger("tracking.reports.daily_production_mail")
+
+COMPANY_NAME = "Humana Apparels Pvt. Ltd."
+
+# ── Shared styling (mirrors the frontend export's blue header + grey subtotal) ──
+HEADER_FILL = PatternFill("solid", fgColor="2563EB")
+SUBTOTAL_FILL = PatternFill("solid", fgColor="E5E7EB")
+HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
+BOLD_FONT = Font(bold=True, size=11)
+_THIN = Side(style="thin", color="D1D5DB")
+BORDER = Border(top=_THIN, left=_THIN, bottom=_THIN, right=_THIN)
+PCT_FMT = '0.00"%"'
+EM_DASH = "–"
+
+LAST_COL = 30  # 7 single + 11 two-column groups + Remarks
+
+
+def _num(v: Any) -> float:
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return 0
+    return n if n == n else 0  # guard against NaN
+
+
+def _efficiency(output_part: float, input_val: float) -> float:
+    return (output_part / input_val * 100) if input_val > 0 else 0
+
+
+# ---------------------------------------------------------------------------
+# Buyer grouping — ported verbatim from the frontend production-report-table so
+# the exported rows/subtotals match the on-screen table one-for-one. Grouping is
+# purely by the buyer string, so a distinct buyer (e.g. "Sample") automatically
+# gets its own group + subtotal.
+# ---------------------------------------------------------------------------
+_METRICS = [
+    "front",
+    "back",
+    "sleeve",
+    "hood",
+    "collar",
+    "lining",
+    "assembly_input",
+    "output",
+    "inspection",
+    "packed",
+]
+
+
+def build_display_by_buyer(report_data: List[Dict[str, Any]]) -> Dict[str, List[dict]]:
+    orders_by_buyer: Dict[str, List[dict]] = {}
+    hidden_by_buyer: Dict[str, List[dict]] = {}
+
+    for line in report_data:
+        for order in line.get("orders", []):
+            buyer = order.get("buyer") or "UNKNOWN"
+            style = order.get("style") or "UNKNOWN"
+            line_name = order.get("line") or line.get("production_line_name") or "UNKNOWN"
+            is_hidden = bool(order.get("is_hidden"))
+            target = hidden_by_buyer if is_hidden else orders_by_buyer
+            bucket = target.setdefault(buyer, [])
+
+            key = f"{line_name}||{style}"
+            acc = next((x for x in bucket if x["__key"] == key), None)
+            if acc is None:
+                acc = {
+                    "__key": key,
+                    "line": line_name,
+                    "buyer": buyer,
+                    "style": style,
+                    "is_hidden": is_hidden,
+                    "order_quantity": 0,
+                    "input": 0,
+                    "working_days": order.get("working_days") or 1,
+                    "working_hours": order.get("working_hours"),
+                    "__dhu_day_num": 0,
+                    "__dhu_day_den": 0,
+                    "__dhu_avg_num": 0,
+                    "__dhu_avg_den": 0,
+                    "dhu_day": 0,
+                    "dhu_average": 0,
+                }
+                for m in _METRICS:
+                    acc[m] = {"day": 0, "cumulative": 0}
+                bucket.append(acc)
+
+            acc["order_quantity"] += _num(order.get("order_quantity"))
+            acc["input"] += _num(order.get("input"))
+            for m in _METRICS:
+                src = order.get(m) or {}
+                acc[m]["day"] += _num(src.get("day"))
+                acc[m]["cumulative"] += _num(src.get("cumulative"))
+
+            out_day = _num((order.get("output") or {}).get("day"))
+            out_cum = _num((order.get("output") or {}).get("cumulative"))
+            if out_day > 0:
+                acc["__dhu_day_num"] += _num(order.get("dhu_day")) * out_day
+                acc["__dhu_day_den"] += out_day
+            if out_cum > 0:
+                acc["__dhu_avg_num"] += _num(order.get("dhu_average")) * out_cum
+                acc["__dhu_avg_den"] += out_cum
+            acc["dhu_day"] = (
+                acc["__dhu_day_num"] / acc["__dhu_day_den"]
+                if acc["__dhu_day_den"] > 0
+                else 0
+            )
+            acc["dhu_average"] = (
+                acc["__dhu_avg_num"] / acc["__dhu_avg_den"]
+                if acc["__dhu_avg_den"] > 0
+                else 0
+            )
+
+    display: Dict[str, List[dict]] = {}
+    for b in list(orders_by_buyer.keys()) + [
+        k for k in hidden_by_buyer if k not in orders_by_buyer
+    ]:
+        display[b] = orders_by_buyer.get(b, []) + hidden_by_buyer.get(b, [])
+    return display
+
+
+def _buyer_daily_output(orders: List[dict]) -> int:
+    """Sum of visible orders' daily output for the per-buyer email summary."""
+    return int(
+        sum(o["output"]["day"] for o in orders if not o.get("is_hidden"))
+    )
+
+
+# ---------------------------------------------------------------------------
+# Excel generation (openpyxl) — returns in-memory bytes.
+# ---------------------------------------------------------------------------
+_COL_WIDTHS = [
+    10, 16, 18, 11, 8, 7, 10,  # Line..Input
+    9, 9, 9, 9, 9, 9, 11, 11, 9, 9, 11, 11, 10, 10,  # Front..Output
+    11, 11, 9, 9, 11, 11, 10, 10,  # Efficiency..Packed
+    28,  # Remarks
+]
+
+# [group label, left col (1-based), day-sub, right-sub]
+_GROUPS = [
+    ("Front", 8, "Day", "Cumm"),
+    ("Back", 10, "Day", "Cumm"),
+    ("Sleeve", 12, "Day", "Cumm"),
+    ("Hood/Collar", 14, "Day", "Cumm"),
+    ("Lining", 16, "Day", "Cumm"),
+    ("Assembly Input", 18, "Day", "Cumm"),
+    ("Output", 20, "Day", "Cumm"),
+    ("Efficiency %", 22, "Day", "Avg"),
+    ("DHU %", 24, "Day", "Avg"),
+    ("Inspection", 26, "Day", "Cumm"),
+    ("Packed", 28, "Day", "Cumm"),
+]
+_SINGLE_COLS = [
+    (1, "Line"),
+    (2, "Buyer"),
+    (3, "Style"),
+    (4, "Order Qty"),
+    (5, "W Days"),
+    (6, "Hrs"),
+    (7, "Input"),
+    (30, "Remarks"),
+]
+
+
+def _style_header_cell(cell, horizontal="center"):
+    cell.fill = HEADER_FILL
+    cell.font = HEADER_FONT
+    cell.border = BORDER
+    cell.alignment = Alignment(horizontal=horizontal, vertical="center", wrap_text=True)
+
+
+def build_daily_production_xlsx(
+    report_data: List[Dict[str, Any]],
+    summary: Dict[str, Any],
+    report_date: date,
+) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Daily Production"
+
+    for i, width in enumerate(_COL_WIDTHS, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+
+    # ── Title block (rows 1-4) + spacer (row 5) ──
+    ws.cell(row=1, column=1, value=COMPANY_NAME).font = Font(bold=True, size=14)
+    ws.cell(row=2, column=1, value="Daily Production Report").font = Font(bold=True, size=12)
+    ws.cell(row=3, column=1, value=f"Report Date: {report_date}").font = Font(size=10, color="374151")
+    ws.cell(row=4, column=1, value="Generated automatically by Production Tracking Software").font = Font(size=10, color="6B7280")
+
+    # ── Two-tier header (rows 6-7) ──
+    group_row, sub_row = 6, 7
+    for col, label in _SINGLE_COLS:
+        ws.merge_cells(start_row=group_row, start_column=col, end_row=sub_row, end_column=col)
+        ws.cell(row=group_row, column=col, value=label)
+    for label, left, sub_l, sub_r in _GROUPS:
+        ws.merge_cells(start_row=group_row, start_column=left, end_row=group_row, end_column=left + 1)
+        ws.cell(row=group_row, column=left, value=label)
+        ws.cell(row=sub_row, column=left, value=sub_l)
+        ws.cell(row=sub_row, column=left + 1, value=sub_r)
+    for r in (group_row, sub_row):
+        for c in range(1, LAST_COL + 1):
+            _style_header_cell(ws.cell(row=r, column=c))
+
+    ws.freeze_panes = "A8"  # keep title + headers visible on scroll
+
+    # ── Data rows grouped by buyer, each followed by a subtotal ──
+    display = build_display_by_buyer(report_data)
+    row_idx = 8
+
+    def write_data_row(order: dict):
+        nonlocal row_idx
+        input_val = _num(order.get("input"))
+        hood_day = order["hood"]["day"] + order["collar"]["day"]
+        hood_cum = order["hood"]["cumulative"] + order["collar"]["cumulative"]
+        wh = order.get("working_hours")
+        values = [
+            order.get("line"),
+            order.get("buyer"),
+            order.get("style"),
+            int(_num(order.get("order_quantity"))),
+            order.get("working_days"),
+            EM_DASH if wh is None else round(float(wh), 2),
+            int(input_val),
+            order["front"]["day"], order["front"]["cumulative"],
+            order["back"]["day"], order["back"]["cumulative"],
+            order["sleeve"]["day"], order["sleeve"]["cumulative"],
+            hood_day, hood_cum,
+            order["lining"]["day"], order["lining"]["cumulative"],
+            order["assembly_input"]["day"], order["assembly_input"]["cumulative"],
+            order["output"]["day"], order["output"]["cumulative"],
+            _efficiency(order["output"]["day"], input_val),
+            _efficiency(order["output"]["cumulative"], input_val),
+            _num(order.get("dhu_day")), _num(order.get("dhu_average")),
+            order["inspection"]["day"], order["inspection"]["cumulative"],
+            order["packed"]["day"], order["packed"]["cumulative"],
+            _remarks_text(order),
+        ]
+        for c, val in enumerate(values, start=1):
+            cell = ws.cell(row=row_idx, column=c, value=val)
+            cell.border = BORDER
+            if 4 <= c <= 29:
+                cell.alignment = Alignment(horizontal="right")
+            if 22 <= c <= 25:
+                cell.number_format = PCT_FMT
+            if order.get("is_hidden"):
+                cell.font = Font(color="9CA3AF")
+        row_idx += 1
+
+    def write_subtotal_row(buyer: str, orders: List[dict]):
+        nonlocal row_idx
+        visible = [o for o in orders if not o.get("is_hidden")]
+        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=3)
+        ws.cell(row=row_idx, column=1, value=f"{buyer} Total")
+        ws.cell(row=row_idx, column=4, value=int(sum(o["order_quantity"] for o in visible)))
+        ws.cell(row=row_idx, column=7, value=int(sum(o["input"] for o in visible)))
+        ws.cell(row=row_idx, column=20, value=int(sum(o["output"]["day"] for o in visible)))
+        ws.cell(row=row_idx, column=21, value=int(sum(o["output"]["cumulative"] for o in visible)))
+        for c in range(1, LAST_COL + 1):
+            cell = ws.cell(row=row_idx, column=c)
+            cell.font = BOLD_FONT
+            cell.border = BORDER
+            cell.fill = SUBTOTAL_FILL
+            cell.alignment = Alignment(horizontal="right" if 4 <= c <= 29 else "left")
+        row_idx += 1
+
+    for buyer, orders in display.items():
+        for order in orders:
+            write_data_row(order)
+        write_subtotal_row(buyer, orders)
+
+    # ── Grand-total footer (same numbers as the on-screen summary strip) ──
+    row_idx += 1  # spacer
+    footer_labels = [
+        "Total Lines", "Total Orders", "Order Qty", "Total Input",
+        "Daily Output", "Daily Inspection", "Daily Packed", "Efficiency %",
+    ]
+    footer_values = [
+        summary.get("total_production_lines", 0),
+        summary.get("total_orders", 0),
+        summary.get("total_order_quantity", 0),
+        summary.get("daily_input", 0),
+        summary.get("daily_output", 0),
+        summary.get("daily_inspection", 0),
+        summary.get("daily_packed", 0),
+        _num(summary.get("overall_efficiency", 0)),
+    ]
+    for i, label in enumerate(footer_labels, start=1):
+        _style_header_cell(ws.cell(row=row_idx, column=i, value=label))
+    for i, value in enumerate(footer_values, start=1):
+        cell = ws.cell(row=row_idx + 1, column=i, value=value)
+        cell.font = BOLD_FONT
+        cell.border = BORDER
+        cell.alignment = Alignment(horizontal="center")
+        if i == 8:
+            cell.number_format = PCT_FMT
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+def _remarks_text(order: dict) -> str:
+    if order.get("is_hidden"):
+        return "Hidden"
+    remarks = order.get("remarks")
+    if order.get("is_pending_transition") and remarks:
+        return str(remarks).replace(" | ", " · ")
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Send
+# ---------------------------------------------------------------------------
+def send_daily_production_report_email(report_date: Optional[date] = None) -> bool:
+    """
+    Build and send today's Daily Production Report (all lines/buyers combined)
+    to the active MailRecipient rows for report_type="daily_production".
+
+    Returns True if an email was sent, False if skipped (no active "to"
+    recipients) or on error. Never raises — a mail failure must not crash the
+    scheduler or a request.
+    """
+    if report_date is None:
+        report_date = today()
+
+    try:
+        report_data = get_daily_production_report_data(report_date=report_date)
+
+        # Reuse the API's summary generator so the emailed footer/summary numbers
+        # match the report page exactly. Imported locally to avoid a circular
+        # import (the API view imports this services package at module load).
+        from tracking.api.report.daily_production_report import _generate_summary
+
+        summary = _generate_summary(report_data)
+
+        recipients = MailRecipient.objects.filter(
+            report_type=ReportType.DAILY_PRODUCTION, is_active=True
+        )
+        to_list = [r.email for r in recipients if r.recipient_type == RecipientType.TO]
+        cc_list = [r.email for r in recipients if r.recipient_type == RecipientType.CC]
+
+        if not to_list:
+            logger.warning(
+                "Daily production report email skipped for %s: no active 'to' recipients.",
+                report_date,
+            )
+            return False
+
+        display = build_display_by_buyer(report_data)
+        buyer_breakdown = [
+            {"buyer": buyer, "daily_output": _buyer_daily_output(orders)}
+            for buyer, orders in display.items()
+        ]
+
+        context = {
+            "company_name": COMPANY_NAME,
+            "report_date": report_date,
+            "summary": summary,
+            "buyer_breakdown": buyer_breakdown,
+        }
+        html_body = render_to_string("emails/daily_production_report.html", context)
+        text_body = strip_tags(html_body)
+
+        xlsx_bytes = build_daily_production_xlsx(report_data, summary, report_date)
+        filename = f"Daily_Production_Report_{report_date}.xlsx"
+
+        email = EmailMultiAlternatives(
+            subject=f"Daily Production Report — {report_date}",
+            body=text_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=to_list,
+            cc=cc_list,
+        )
+        email.attach_alternative(html_body, "text/html")
+        email.attach(
+            filename,
+            xlsx_bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        email.send()
+
+        logger.info(
+            "Daily production report email sent for %s to=%d cc=%d",
+            report_date, len(to_list), len(cc_list),
+        )
+        return True
+
+    except Exception:  # noqa: BLE001 — mail must never crash the caller
+        logger.exception(
+            "Failed to send daily production report email for %s", report_date
+        )
+        return False

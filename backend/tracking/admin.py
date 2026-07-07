@@ -10,6 +10,7 @@ from tracking.models import (
     Bundle,
     Garment,
     Scan,
+    MailRecipient,
 )
 
 
@@ -103,6 +104,15 @@ class ScanAdmin(BaseModelAdmin):
     date_hierarchy = "created_at"
 
 
+class MailRecipientAdmin(BaseModelAdmin):
+    """Recipients of automated report emails, managed entirely from admin."""
+
+    list_display = ["email", "name", "recipient_type", "report_type", "is_active"]
+    list_filter = ["recipient_type", "report_type", "is_active"]
+    list_editable = ["is_active"]
+    search_fields = ["email", "name"]
+
+
 # --- ADMIN REGISTRATION ---
 # Models with custom admin classes
 admin.site.register(Size, SizeAdmin)
@@ -113,6 +123,7 @@ admin.site.register(Scanner, ScannerAdmin)
 admin.site.register(Bundle, BundleAdmin)
 admin.site.register(Garment, GarmentAdmin)
 admin.site.register(Scan, ScanAdmin)
+admin.site.register(MailRecipient, MailRecipientAdmin)
 
 # Auto-register remaining models from tracking app with BaseModelAdmin
 # This will register all models that inherit from BaseModel and are not already registered
@@ -128,6 +139,7 @@ auto_register_models(
         "Bundle",
         "Garment",
         "Scan",
+        "MailRecipient",
     ],
     verbose=settings.DEBUG,
 )
