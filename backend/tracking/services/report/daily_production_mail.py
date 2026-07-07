@@ -16,15 +16,18 @@ import logging
 import smtplib
 import time
 from datetime import date
+from email.mime.image import MIMEImage
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 
 from django.conf import settings
+from django.contrib.staticfiles import finders
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 
 from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -36,6 +39,21 @@ from tracking.services.report import get_daily_production_report_data
 logger = logging.getLogger("tracking.reports.daily_production_mail")
 
 COMPANY_NAME = "Humana Apparels Pvt. Ltd."
+
+# Horizontal wordmark, resolved from the tracking app's static/ dir. Optional:
+# if the file isn't present the Excel/email simply render without a logo, so a
+# missing asset never breaks report delivery.
+LOGO_STATIC_PATH = "images/company-logo-horizontal.png"
+LOGO_WIDTH_PX = 160
+LOGO_HEIGHT_PX = 73  # keeps the 220×101 source aspect ratio
+
+
+def _logo_path() -> Optional[str]:
+    """Absolute filesystem path to the logo, or None if it isn't installed."""
+    try:
+        return finders.find(LOGO_STATIC_PATH)
+    except Exception:  # noqa: BLE001 — a logo lookup must never break a send
+        return None
 
 # ── Shared styling (mirrors the frontend export's blue header + grey subtotal) ──
 HEADER_FILL = PatternFill("solid", fgColor="2563EB")
@@ -223,10 +241,25 @@ def build_daily_production_xlsx(
         ws.column_dimensions[get_column_letter(i)].width = width
 
     # ── Title block (rows 1-4) + spacer (row 5) ──
-    ws.cell(row=1, column=1, value=COMPANY_NAME).font = Font(bold=True, size=14)
-    ws.cell(row=2, column=1, value="Daily Production Report").font = Font(bold=True, size=12)
-    ws.cell(row=3, column=1, value=f"Report Date: {report_date}").font = Font(size=10, color="374151")
-    ws.cell(row=4, column=1, value="Generated automatically by Production Tracking Software").font = Font(size=10, color="6B7280")
+    # Optional top-left logo floats over rows 1-4; when present, the text block
+    # shifts right (col 4) so it sits beside the logo instead of behind it. No
+    # rows are added, so freeze panes / row indices below stay put.
+    title_col = 1
+    logo_path = _logo_path()
+    if logo_path:
+        try:
+            img = XLImage(logo_path)
+            img.width, img.height = LOGO_WIDTH_PX, LOGO_HEIGHT_PX
+            ws.add_image(img, "A1")
+            title_col = 4
+        except Exception:  # noqa: BLE001 — a bad image must not break the file
+            logger.warning("Could not embed logo into Excel from %s", logo_path)
+            title_col = 1
+
+    ws.cell(row=1, column=title_col, value=COMPANY_NAME).font = Font(bold=True, size=14)
+    ws.cell(row=2, column=title_col, value="Daily Production Report").font = Font(bold=True, size=12)
+    ws.cell(row=3, column=title_col, value=f"Report Date: {report_date}").font = Font(size=10, color="374151")
+    ws.cell(row=4, column=title_col, value="Generated automatically by Production Tracking Software").font = Font(size=10, color="6B7280")
 
     # ── Two-tier header (rows 6-7) ──
     group_row, sub_row = 6, 7
@@ -327,6 +360,9 @@ def build_daily_production_xlsx(
     ]
     for i, label in enumerate(footer_labels, start=1):
         _style_header_cell(ws.cell(row=row_idx, column=i, value=label))
+    # Taller row so wrapped labels (e.g. "Daily Inspection") show cleanly on two
+    # lines instead of looking cramped — without widening the shared data columns.
+    ws.row_dimensions[row_idx].height = 30
     for i, value in enumerate(footer_values, start=1):
         cell = ws.cell(row=row_idx + 1, column=i, value=value)
         cell.font = BOLD_FONT
@@ -452,11 +488,13 @@ def send_daily_production_report_email(report_date: Optional[date] = None) -> bo
             for buyer, orders in display.items()
         ]
 
+        logo_path = _logo_path()
         context = {
             "company_name": COMPANY_NAME,
             "report_date": report_date,
             "summary": summary,
             "buyer_breakdown": buyer_breakdown,
+            "has_logo": bool(logo_path),
         }
         html_body = render_to_string("emails/daily_production_report.html", context)
         text_body = strip_tags(html_body)
@@ -472,6 +510,23 @@ def send_daily_production_report_email(report_date: Optional[date] = None) -> bo
             cc=cc_list,
         )
         email.attach_alternative(html_body, "text/html")
+
+        # Inline logo via Content-ID (cid:) — the most reliable way to show an
+        # image in Outlook/Office 365, which block remote and base64 images by
+        # default. "related" nests the image with the HTML part.
+        if logo_path:
+            try:
+                with open(logo_path, "rb") as fh:
+                    logo_img = MIMEImage(fh.read())
+                logo_img.add_header("Content-ID", "<company_logo>")
+                logo_img.add_header(
+                    "Content-Disposition", "inline", filename="company-logo.png"
+                )
+                email.mixed_subtype = "related"
+                email.attach(logo_img)
+            except Exception:  # noqa: BLE001 — a logo failure must not block the mail
+                logger.warning("Could not attach inline logo from %s", logo_path)
+
         email.attach(
             filename,
             xlsx_bytes,

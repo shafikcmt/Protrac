@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { COMPANY_LOGO_BASE64 } from "./company-logo";
 
 /* Shared visual language across every report export in this app — mirrors the
    constants in finishing-report.ts so all .xlsx files look like one family. */
@@ -214,11 +215,25 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
 
   const LAST_COL = 30;
 
-  /* ── Title block ── */
-  sheet.addRow(["Humana Apparels Pvt. Ltd."]).getCell(1).font = { bold: true, size: 14 };
-  sheet.addRow(["Daily Production Report"]).getCell(1).font = { bold: true, size: 12 };
-  sheet.addRow([`Report Date: ${reportDate}`]).getCell(1).font = { size: 10, color: { argb: "FF374151" } };
-  sheet.addRow([`Generated: ${format(new Date(), "MMMM d, yyyy 'at' HH:mm")}`]).getCell(1).font = { size: 10, color: { argb: "FF6B7280" } };
+  /* ── Title block ──
+     Optional top-left logo floats over rows 1-4; when present the text block
+     shifts right (col 4) so it sits beside the logo. No rows are added, so the
+     frozen header row index below is unaffected. */
+  const titleCol = COMPANY_LOGO_BASE64 ? 4 : 1;
+  if (COMPANY_LOGO_BASE64) {
+    const imageId = workbook.addImage({ base64: COMPANY_LOGO_BASE64, extension: "png" });
+    sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 160, height: 73 } });
+  }
+  const addTitle = (text: string, font: any) => {
+    const row = sheet.addRow([]);
+    const cell = row.getCell(titleCol);
+    cell.value = text;
+    cell.font = font;
+  };
+  addTitle("Humana Apparels Pvt. Ltd.", { bold: true, size: 14 });
+  addTitle("Daily Production Report", { bold: true, size: 12 });
+  addTitle(`Report Date: ${reportDate}`, { size: 10, color: { argb: "FF374151" } });
+  addTitle(`Generated: ${format(new Date(), "MMMM d, yyyy 'at' HH:mm")}`, { size: 10, color: { argb: "FF6B7280" } });
   sheet.addRow([]); // spacer
 
   /* ── Two-tier header ──
@@ -394,6 +409,9 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
 
     const fLabelRow = sheet.getRow(footerHeaderRowIdx);
     const fValueRow = sheet.getRow(footerHeaderRowIdx + 1);
+    // Taller row so wrapped labels (e.g. "Daily Inspection") show cleanly on two
+    // lines instead of looking cramped — without widening the shared data columns.
+    fLabelRow.height = 30;
     labels.forEach((label, i) => {
       const cell = fLabelRow.getCell(i + 1);
       cell.value = label;
