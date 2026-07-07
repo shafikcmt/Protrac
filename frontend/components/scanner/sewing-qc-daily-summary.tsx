@@ -89,7 +89,24 @@ function StatTile({
 }
 
 export function SewingQCDailySummary() {
-  const date = React.useMemo(() => getDhakaToday(), []);
+  // Re-derive the Dhaka date on an interval so a long-open kiosk tab rolls over
+  // to the next day automatically at midnight — no manual page reload needed.
+  // Only bump state when the day actually changes to avoid needless re-renders.
+  const [date, setDate] = React.useState(getDhakaToday);
+
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      setDate((prev) => {
+        const now = getDhakaToday();
+        return now === prev ? prev : now;
+      });
+    }, 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Which order-group (size) pill is selected. Index 0 = most-recently-active,
+  // shown by default; clamped at render time in case the group list shrinks.
+  const [selectedGroupIdx, setSelectedGroupIdx] = React.useState(0);
 
   const { data, isLoading, error } = apiHooks.useGet(
     "/api/tracking/sewing-qc/daily-summary/",
@@ -153,7 +170,31 @@ export function SewingQCDailySummary() {
     top_defects = [],
     active_order,
     garments_grid = [],
+    order_groups = [],
   } = data;
+
+  // One serial grid per order (size) active today, most-recent first. During
+  // rollout an older backend might not send order_groups yet, so fall back to the
+  // legacy flat active_order + garments_grid as a single synthetic group. Mirrors
+  // the assembly "Today's summary" card.
+  const groups =
+    order_groups.length > 0
+      ? order_groups
+      : active_order
+        ? [
+            {
+              order_number: active_order.order_number,
+              style: active_order.style,
+              size: "",
+              last_activity_at: "",
+              garments_grid,
+            },
+          ]
+        : [];
+
+  // In this render groups may be empty; the Serial Status block below guards on
+  // that. Clamp the selected index so a shrinking group list never dangles.
+  const selectedGroup = groups[selectedGroupIdx] ?? groups[0];
 
   const maxDefect = top_defects.reduce((m, d) => Math.max(m, d.count), 0);
 
@@ -187,23 +228,89 @@ export function SewingQCDailySummary() {
             <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Serial Status
             </div>
-            {active_order && (
+            {/* Top-right identity tracks the currently-selected pill, not always
+                the first group. */}
+            {selectedGroup && (
               <div className="min-w-0 text-right">
                 <div className="truncate text-xs font-semibold">
-                  {active_order.order_number}
+                  {selectedGroup.order_number}
                 </div>
                 <div className="truncate text-[11px] text-muted-foreground">
-                  {active_order.style}
+                  {selectedGroup.style}
+                  {selectedGroup.size ? ` • ${selectedGroup.size}` : ""}
                 </div>
               </div>
             )}
           </div>
-          <SerialHeatmapGrid
-            cells={garments_grid}
-            statusConfig={SEWING_QC_STATUS_CONFIG}
-            legendOrder={SEWING_QC_LEGEND_ORDER}
-            emptyMessage="No active order on this line today."
-          />
+
+          {/* One serial grid per order (size) active today. The same style can
+              have several sizes (each a distinct Order) in QC the same day.
+              Rather than stacking every grid (tall card), a compact pill switcher
+              lets the operator flip between sizes; only the selected size's grid
+              renders, so the card height stays consistent. Groups arrive
+              recency-sorted, so pill 0 (most-recently-active) is default. Mirrors
+              the assembly-tracking "Today's summary" card. */}
+          {groups.length === 0 || !selectedGroup ? (
+            <SerialHeatmapGrid
+              cells={[]}
+              statusConfig={SEWING_QC_STATUS_CONFIG}
+              legendOrder={SEWING_QC_LEGEND_ORDER}
+              emptyMessage="No active order on this line today."
+            />
+          ) : (
+            <>
+              {/* Pill switcher — only when 2+ sizes are active today. */}
+              {groups.length > 1 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {groups.map((group, i) => {
+                    // "Done" numerator = garments that passed QC today.
+                    const done = group.garments_grid.filter(
+                      (c) => c.status === "sewing_qc_pass"
+                    ).length;
+                    const total = group.garments_grid.length;
+                    const isSelected = i === selectedGroupIdx;
+                    return (
+                      <button
+                        key={`${group.order_number}-${group.size}`}
+                        type="button"
+                        onClick={() => setSelectedGroupIdx(i)}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                          isSelected
+                            ? "bg-emerald-500 text-white ring-1 ring-emerald-500/30"
+                            : "border-[0.5px] border-border bg-muted/30 text-muted-foreground hover:bg-muted/40"
+                        )}
+                      >
+                        {isSelected && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                        )}
+                        <span className="max-w-[140px] truncate">
+                          {group.style}
+                          {group.size ? ` • ${group.size}` : ""}
+                        </span>
+                        <span
+                          className={cn(
+                            "tabular-nums",
+                            isSelected ? "text-white/90" : "text-foreground/70"
+                          )}
+                        >
+                          {done}/{total}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {/* Only the selected group's grid — one at a time keeps the card
+                  compact with no nested/runaway scrolling. */}
+              <SerialHeatmapGrid
+                cells={selectedGroup.garments_grid}
+                statusConfig={SEWING_QC_STATUS_CONFIG}
+                legendOrder={SEWING_QC_LEGEND_ORDER}
+                emptyMessage="No active order on this line today."
+              />
+            </>
+          )}
         </div>
 
         {/* Top defects — how often each code was tagged today */}
