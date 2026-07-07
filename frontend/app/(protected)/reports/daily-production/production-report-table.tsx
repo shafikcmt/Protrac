@@ -193,6 +193,7 @@ export function ProductionReportTable({
           sleeve: { day: 0, cumulative: 0 },
           hood: { day: 0, cumulative: 0 },
           collar: { day: 0, cumulative: 0 },
+          lining: { day: 0, cumulative: 0 },
           assembly_input: { day: 0, cumulative: 0 },
           output: { day: 0, cumulative: 0 },
           inspection: { day: 0, cumulative: 0 },
@@ -237,6 +238,7 @@ export function ProductionReportTable({
       addMetric("sleeve");
       addMetric("hood");
       addMetric("collar");
+      addMetric("lining");
       addMetric("assembly_input");
       addMetric("output");
       addMetric("inspection");
@@ -325,6 +327,9 @@ export function ProductionReportTable({
                   Hood/Collar
                 </TableHead>
                 <TableHead className="text-center" colSpan={2}>
+                  Lining
+                </TableHead>
+                <TableHead className="text-center" colSpan={2}>
                   Assembly Input
                 </TableHead>
                 <TableHead className="text-center" colSpan={2}>
@@ -355,24 +360,35 @@ export function ProductionReportTable({
                 <TableHead />
                 <TableHead />
 
+                {/* Front */}
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Cumm</TableHead>
 
+                {/* Back */}
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Cumm</TableHead>
 
+                {/* Sleeve */}
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Cumm</TableHead>
 
+                {/* Hood/Collar */}
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Cumm</TableHead>
 
+                {/* Lining */}
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Cumm</TableHead>
 
+                {/* Assembly Input */}
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Cumm</TableHead>
 
+                {/* Output */}
+                <TableHead className="text-xs text-right">Day</TableHead>
+                <TableHead className="text-xs text-right">Cumm</TableHead>
+
+                {/* Efficiency % */}
                 <TableHead className="text-xs text-right">Day</TableHead>
                 <TableHead className="text-xs text-right">Avg</TableHead>
 
@@ -563,6 +579,13 @@ export function ProductionReportTable({
                           </TableCell>
 
                           <TableCell className="text-right text-xs">
+                            {formatNumber(order.lining?.day || 0)}
+                          </TableCell>
+                          <TableCell className="text-right text-xs">
+                            {formatNumber(order.lining?.cumulative || 0)}
+                          </TableCell>
+
+                          <TableCell className="text-right text-xs">
                             {formatNumber(order.assembly_input?.day || 0)}
                           </TableCell>
                           <TableCell className="text-right text-xs">
@@ -723,7 +746,7 @@ export function ProductionReportTable({
                       )}
                     </TableCell>
 
-                    <TableCell colSpan={10} />
+                    <TableCell colSpan={12} />
 
                     <TableCell className="text-right text-xs">
                       {formatNumber(

@@ -36,6 +36,7 @@ import {
 import { ProductionReportFilters } from "./production-report-filters";
 import { ProductionReportTable } from "./production-report-table";
 import { useDailyProductionReport, useLineStyleCompletions, undoStyleComplete, type LineStyleCompletionRecord } from "@/hooks/api";
+import { generateDailyProductionExcel } from "@/lib/reports/daily-production-report";
 import { cn } from "@/lib/utils";
 
 interface FiltersState {
@@ -76,6 +77,7 @@ export default function DailyProductionPage() {
   const [showUndoPanel, setShowUndoPanel] = useState(false);
   const [undoTarget, setUndoTarget] = useState<LineStyleCompletionRecord | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleFiltersChange = (newFilters: FiltersState) => {
     setFilters((prev) => {
@@ -143,100 +145,16 @@ export default function DailyProductionPage() {
 
   const handleRefresh = () => refetch();
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!reportData?.production_lines?.length) return;
-
-    const safe = (v: any) => (v === null || v === undefined ? "" : String(v));
-
-    const headers = [
-      "Line",
-      "Buyer",
-      "Style",
-      "Order Qty",
-      "W Days",
-      "Hrs",
-      "Input",
-      "Front Day",
-      "Front Cumm",
-      "Back Day",
-      "Back Cumm",
-      "Sleeve Day",
-      "Sleeve Cumm",
-      "Hood/Collar Day",
-      "Hood/Collar Cumm",
-      "Lining Day",
-      "Lining Cumm",
-      "Assembly Input Day",
-      "Assembly Input Cumm",
-      "Output Day",
-      "Output Cumm",
-      "DHU Day %",
-      "DHU Avg %",
-      "Inspection Day",
-      "Inspection Cumm",
-      "Packed Day",
-      "Packed Cumm",
-    ];
-
-    const rows: string[][] = [];
-    reportData.production_lines.forEach((pl: any) => {
-      (pl.orders || []).forEach((o: any) => {
-        const hoodDay = (o.hood?.day || 0) + (o.collar?.day || 0);
-        const hoodCumm = (o.hood?.cumulative || 0) + (o.collar?.cumulative || 0);
-
-        rows.push([
-          safe(o.line),
-          safe(o.buyer),
-          safe(o.style),
-          safe(o.order_quantity || 0),
-          safe(o.working_days || 0),
-          safe(o.working_hours?.toFixed?.(2) ?? o.working_hours ?? 0),
-          safe(o.input || 0),
-          safe(o.front?.day || 0),
-          safe(o.front?.cumulative || 0),
-          safe(o.back?.day || 0),
-          safe(o.back?.cumulative || 0),
-          safe(o.sleeve?.day || 0),
-          safe(o.sleeve?.cumulative || 0),
-          safe(hoodDay),
-          safe(hoodCumm),
-          safe(o.lining?.day || 0),
-          safe(o.lining?.cumulative || 0),
-          safe(o.assembly_input?.day || 0),
-          safe(o.assembly_input?.cumulative || 0),
-          safe(o.output?.day || 0),
-          safe(o.output?.cumulative || 0),
-          safe(o.dhu_day ?? 0),
-          safe(o.dhu_average ?? 0),
-          safe(o.inspection?.day || 0),
-          safe(o.inspection?.cumulative || 0),
-          safe(o.packed?.day || 0),
-          safe(o.packed?.cumulative || 0),
-        ]);
-      });
-    });
-
-    const escapeCSV = (value: string) => {
-      const needsQuotes = /[",\n]/.test(value);
-      const v = value.replace(/"/g, '""');
-      return needsQuotes ? `"${v}"` : v;
-    };
-
-    const csv = [headers, ...rows]
-      .map((r) => r.map((c) => escapeCSV(safe(c))).join(","))
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = window.URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    const d = reportData.report_date || filters.report_date || "report";
-    a.download = `daily-production-${d}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+    setIsExporting(true);
+    try {
+      await generateDailyProductionExcel(reportData, filters);
+    } catch (e: any) {
+      toast.error(`Export failed: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (error) {
@@ -296,11 +214,11 @@ export default function DailyProductionPage() {
                 variant="outline"
                 size="sm"
                 onClick={handleExport}
-                disabled={isLoading || !reportData}
+                disabled={isLoading || !reportData || isExporting}
                 className="gap-2"
               >
-                <Download className="h-4 w-4" />
-                Export CSV
+                <Download className={cn("h-4 w-4", isExporting && "animate-pulse")} />
+                {isExporting ? "Exporting…" : "Export Excel"}
               </Button>
             </div>
           </div>
