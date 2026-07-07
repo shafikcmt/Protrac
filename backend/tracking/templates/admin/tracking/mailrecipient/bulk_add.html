@@ -1,0 +1,69 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="px-4">
+  <div class="container mb-6 mx-auto -my-3 lg:mb-12">
+    <ul class="flex flex-wrap">
+      <li>
+        <a href="{% url 'admin:index' %}" class="text-primary-600 dark:text-primary-500">{% trans 'Home' %}</a>
+        <span class="mx-2">&rsaquo;</span>
+      </li>
+      <li>
+        <a href="{% url 'admin:tracking_mailrecipient_changelist' %}" class="text-primary-600 dark:text-primary-500">Mail Recipients</a>
+        <span class="mx-2">&rsaquo;</span>
+      </li>
+      <li>Bulk add</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl">
+  <h1 class="font-semibold mb-6 text-lg">Bulk add mail recipients</h1>
+
+  <p class="mb-6 text-sm text-gray-500 dark:text-gray-400">
+    Paste multiple emails below (one per line or comma-separated). The chosen
+    recipient type, report type, and active state apply to every email in the
+    batch. Invalid or already-existing addresses are skipped and reported.
+  </p>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="mb-6 text-sm text-red-600 dark:text-red-500">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    {% for field in form %}
+      <div class="mb-6 {% if field.name == 'is_active' %}flex items-center gap-3{% endif %}">
+        <label for="{{ field.id_for_label }}"
+               class="block font-semibold mb-2 text-font-important-light dark:text-font-important-dark text-sm {% if field.name == 'is_active' %}mb-0 order-2{% endif %}">
+          {{ field.label }}
+        </label>
+        <div class="{% if field.name == 'is_active' %}order-1{% endif %}">
+          {{ field }}
+        </div>
+        {% if field.help_text %}
+          <div class="mt-2 text-sm text-gray-500 dark:text-gray-400 {% if field.name == 'is_active' %}basis-full order-3{% endif %}">{{ field.help_text|safe }}</div>
+        {% endif %}
+        {% if field.errors %}
+          <div class="mt-2 text-sm text-red-600 dark:text-red-500 {% if field.name == 'is_active' %}basis-full order-4{% endif %}">{{ field.errors }}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <div class="flex items-center gap-3 mt-6">
+      <button type="submit"
+              class="bg-primary-600 border border-transparent font-medium px-4 py-2 rounded-default text-white cursor-pointer">
+        Add recipients
+      </button>
+      <a href="{% url 'admin:tracking_mailrecipient_changelist' %}"
+         class="border font-medium px-4 py-2 rounded-default text-gray-500 dark:text-gray-400">
+        Cancel
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

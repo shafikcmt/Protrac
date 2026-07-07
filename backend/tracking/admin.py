@@ -1,5 +1,19 @@
-from django.contrib import admin
+import re
+
+from django import forms
+from django.contrib import admin, messages
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.validators import EmailValidator
+from django.shortcuts import redirect, render
+
+from unfold.decorators import action
+from unfold.widgets import (
+    UnfoldAdminTextareaWidget,
+    UnfoldAdminSelectWidget,
+    UnfoldBooleanSwitchWidget,
+)
+
 from common.admin import BaseModelAdmin, auto_register_models
 from tracking.models import (
     Size,
@@ -12,6 +26,7 @@ from tracking.models import (
     Scan,
     MailRecipient,
 )
+from tracking.models.mail import RecipientType, ReportType
 
 
 # --- CUSTOM ADMIN CLASSES ---
@@ -104,6 +119,31 @@ class ScanAdmin(BaseModelAdmin):
     date_hierarchy = "created_at"
 
 
+class BulkAddRecipientForm(forms.Form):
+    """Intermediate form for adding many recipients in one go."""
+
+    emails = forms.CharField(
+        widget=UnfoldAdminTextareaWidget(attrs={"rows": 8}),
+        help_text="One email per line or comma-separated. Both are accepted.",
+    )
+    recipient_type = forms.ChoiceField(
+        choices=RecipientType.choices,
+        initial=RecipientType.TO,
+        widget=UnfoldAdminSelectWidget,
+        help_text="Applies to every email in this batch.",
+    )
+    report_type = forms.ChoiceField(
+        choices=ReportType.choices,
+        initial=ReportType.DAILY_PRODUCTION,
+        widget=UnfoldAdminSelectWidget,
+    )
+    is_active = forms.BooleanField(
+        required=False,
+        initial=True,
+        widget=UnfoldBooleanSwitchWidget,
+    )
+
+
 class MailRecipientAdmin(BaseModelAdmin):
     """Recipients of automated report emails, managed entirely from admin."""
 
@@ -111,6 +151,77 @@ class MailRecipientAdmin(BaseModelAdmin):
     list_filter = ["recipient_type", "report_type", "is_active"]
     list_editable = ["is_active"]
     search_fields = ["email", "name"]
+
+    # Changelist-level "Bulk add" button (Unfold renders it at the top). The URL
+    # is auto-registered by Unfold from url_path; the single add/edit form is
+    # untouched.
+    actions_list = ["bulk_add_recipients"]
+
+    @action(
+        description="Bulk add recipients",
+        url_path="bulk-add",
+        icon="group_add",
+    )
+    def bulk_add_recipients(self, request):
+        if request.method == "POST":
+            form = BulkAddRecipientForm(request.POST)
+            if form.is_valid():
+                recipient_type = form.cleaned_data["recipient_type"]
+                report_type = form.cleaned_data["report_type"]
+                is_active = form.cleaned_data["is_active"]
+
+                # Split on newlines and commas, trim, drop empties.
+                tokens = [
+                    t.strip()
+                    for t in re.split(r"[\n,]+", form.cleaned_data["emails"])
+                    if t.strip()
+                ]
+
+                validate_email = EmailValidator()
+                added = skipped = invalid = 0
+                for token in tokens:
+                    try:
+                        validate_email(token)
+                    except ValidationError:
+                        invalid += 1
+                        continue
+                    # Skip an exact (email, recipient_type, report_type) match.
+                    # A just-created row is found here too, so duplicates within
+                    # the same paste are also skipped rather than re-created.
+                    if MailRecipient.objects.filter(
+                        email=token,
+                        recipient_type=recipient_type,
+                        report_type=report_type,
+                    ).exists():
+                        skipped += 1
+                        continue
+                    MailRecipient.objects.create(
+                        email=token,
+                        recipient_type=recipient_type,
+                        report_type=report_type,
+                        is_active=is_active,
+                        created_by=request.user,
+                    )
+                    added += 1
+
+                self.message_user(
+                    request,
+                    f"{added} added, {skipped} skipped (duplicate), {invalid} invalid.",
+                    messages.SUCCESS,
+                )
+                return redirect("admin:tracking_mailrecipient_changelist")
+        else:
+            form = BulkAddRecipientForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Bulk add mail recipients",
+            "opts": self.model._meta,
+            "form": form,
+        }
+        return render(
+            request, "admin/tracking/mailrecipient/bulk_add.html", context
+        )
 
 
 # --- ADMIN REGISTRATION ---
