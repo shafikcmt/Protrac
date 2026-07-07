@@ -13,6 +13,8 @@ report-data service the API/frontend use; no Excel formulas are written, so
 from __future__ import annotations
 
 import logging
+import smtplib
+import time
 from datetime import date
 from io import BytesIO
 from typing import Any, Dict, List, Optional
@@ -155,6 +157,13 @@ def _buyer_daily_output(orders: List[dict]) -> int:
     """Sum of visible orders' daily output for the per-buyer email summary."""
     return int(
         sum(o["output"]["day"] for o in orders if not o.get("is_hidden"))
+    )
+
+
+def _buyer_cumulative_output(orders: List[dict]) -> int:
+    """Sum of visible orders' cumulative output (running total) per buyer."""
+    return int(
+        sum(o["output"]["cumulative"] for o in orders if not o.get("is_hidden"))
     )
 
 
@@ -343,6 +352,49 @@ def _remarks_text(order: dict) -> str:
 # ---------------------------------------------------------------------------
 # Send
 # ---------------------------------------------------------------------------
+# Transient SMTP hiccups (dropped socket, brief network blip) are retried a few
+# times before we give up. Only connection-level errors are retried — an auth or
+# recipient error would just fail identically on every attempt.
+_SEND_MAX_RETRIES = 2  # i.e. up to 3 attempts total
+_SEND_RETRY_DELAY_SECONDS = 3
+_RETRYABLE_SEND_ERRORS = (smtplib.SMTPServerDisconnected, ConnectionError)
+
+
+def _send_email_with_retry(email: EmailMultiAlternatives, report_date: date) -> None:
+    """
+    Send ``email``, retrying only on transient connection-level SMTP failures.
+
+    Each attempt and its outcome is logged. Raises the last error if every
+    attempt fails, so the caller's ``except`` block records the final failure.
+    """
+    attempts = _SEND_MAX_RETRIES + 1
+    for attempt in range(1, attempts + 1):
+        try:
+            email.send()
+            if attempt > 1:
+                logger.info(
+                    "Daily production report email sent for %s on attempt %d/%d.",
+                    report_date, attempt, attempts,
+                )
+            return
+        except _RETRYABLE_SEND_ERRORS as exc:
+            if attempt < attempts:
+                logger.warning(
+                    "Daily production report email send attempt %d/%d for %s failed "
+                    "(%s: %s); retrying in %ds.",
+                    attempt, attempts, report_date,
+                    type(exc).__name__, exc, _SEND_RETRY_DELAY_SECONDS,
+                )
+                time.sleep(_SEND_RETRY_DELAY_SECONDS)
+            else:
+                logger.error(
+                    "Daily production report email send failed for %s after %d "
+                    "attempts (%s: %s); giving up.",
+                    report_date, attempts, type(exc).__name__, exc,
+                )
+                raise
+
+
 def send_daily_production_report_email(report_date: Optional[date] = None) -> bool:
     """
     Build and send today's Daily Production Report (all lines/buyers combined)
@@ -365,6 +417,18 @@ def send_daily_production_report_email(report_date: Optional[date] = None) -> bo
 
         summary = _generate_summary(report_data)
 
+        # Cumulative (running-total) output alongside the summary's daily output.
+        # Mirror _generate_summary's rule of excluding hidden rows so the two
+        # numbers on the Summary card stay directly comparable.
+        summary["total_output_cumulative"] = int(
+            sum(
+                (order.get("output") or {}).get("cumulative", 0) or 0
+                for line in report_data
+                for order in line.get("orders", [])
+                if not order.get("is_hidden")
+            )
+        )
+
         recipients = MailRecipient.objects.filter(
             report_type=ReportType.DAILY_PRODUCTION, is_active=True
         )
@@ -380,7 +444,11 @@ def send_daily_production_report_email(report_date: Optional[date] = None) -> bo
 
         display = build_display_by_buyer(report_data)
         buyer_breakdown = [
-            {"buyer": buyer, "daily_output": _buyer_daily_output(orders)}
+            {
+                "buyer": buyer,
+                "daily_output": _buyer_daily_output(orders),
+                "cumulative_output": _buyer_cumulative_output(orders),
+            }
             for buyer, orders in display.items()
         ]
 
@@ -409,7 +477,7 @@ def send_daily_production_report_email(report_date: Optional[date] = None) -> bo
             xlsx_bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        email.send()
+        _send_email_with_retry(email, report_date)
 
         logger.info(
             "Daily production report email sent for %s to=%d cc=%d",
@@ -422,3 +490,70 @@ def send_daily_production_report_email(report_date: Optional[date] = None) -> bo
             "Failed to send daily production report email for %s", report_date
         )
         return False
+
+
+# ---------------------------------------------------------------------------
+# Live (re)scheduling — called on startup and whenever the admin saves the
+# ReportScheduleConfig row, so the send time changes without a server restart.
+# ---------------------------------------------------------------------------
+DAILY_PRODUCTION_JOB_ID = "daily_production_report_email"
+_DEFAULT_HOUR = 18
+_DEFAULT_MINUTE = 0
+
+
+def reschedule_daily_production_job(scheduler) -> None:
+    """
+    Remove the existing daily-production job and re-add it from the current
+    ReportScheduleConfig row. If the config is disabled, the job is left removed.
+    Falls back to 18:00 when the config row/table isn't available yet (e.g. on
+    first startup before migrations run). Never raises.
+    """
+    try:
+        from apscheduler.triggers.cron import CronTrigger
+
+        # Drop any existing job first so a changed time / disable takes effect.
+        if scheduler.get_job(DAILY_PRODUCTION_JOB_ID):
+            scheduler.remove_job(DAILY_PRODUCTION_JOB_ID)
+
+        hour, minute, enabled = _DEFAULT_HOUR, _DEFAULT_MINUTE, True
+        try:
+            from tracking.models.mail import ReportScheduleConfig, ReportType
+
+            config = ReportScheduleConfig.objects.filter(
+                report_type=ReportType.DAILY_PRODUCTION
+            ).first()
+            if config is not None:
+                hour, minute, enabled = (
+                    config.send_hour,
+                    config.send_minute,
+                    config.is_enabled,
+                )
+        except Exception:  # noqa: BLE001 — table may not exist pre-migration
+            logger.warning(
+                "ReportScheduleConfig unavailable; using default %02d:%02d.",
+                _DEFAULT_HOUR, _DEFAULT_MINUTE,
+            )
+
+        if not enabled:
+            logger.info(
+                "Daily production report schedule is disabled; job removed."
+            )
+            return
+
+        # Import the job entry point lazily to avoid an import cycle with apps.py.
+        from tracking.apps import _run_daily_production_report_job
+
+        scheduler.add_job(
+            _run_daily_production_report_job,
+            trigger=CronTrigger(hour=hour, minute=minute),
+            id=DAILY_PRODUCTION_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info(
+            "Daily production report job scheduled at %02d:%02d Asia/Dhaka.",
+            hour, minute,
+        )
+    except Exception:  # noqa: BLE001 — scheduling must never crash the caller
+        logger.exception("Failed to (re)schedule the daily production report job.")

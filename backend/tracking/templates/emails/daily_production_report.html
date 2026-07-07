@@ -47,6 +47,10 @@
                   <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right; color:#059669;">{{ summary.daily_output }}</td>
                 </tr>
                 <tr>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Cumulative Output</td>
+                  <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right;">{{ summary.total_output_cumulative }}</td>
+                </tr>
+                <tr>
                   <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; color:#6b7280;">Daily Inspection</td>
                   <td style="padding:8px 0; border-bottom:1px solid #f3f4f6; font-size:14px; font-weight:bold; text-align:right;">{{ summary.daily_inspection }}</td>
                 </tr>
@@ -71,11 +75,13 @@
                 <tr>
                   <td style="padding:8px 10px; background-color:#f9fafb; font-size:12px; font-weight:bold; text-transform:uppercase; color:#6b7280; border:1px solid #e5e7eb;">Buyer</td>
                   <td style="padding:8px 10px; background-color:#f9fafb; font-size:12px; font-weight:bold; text-transform:uppercase; color:#6b7280; border:1px solid #e5e7eb; text-align:right;">Daily Output</td>
+                  <td style="padding:8px 10px; background-color:#f9fafb; font-size:12px; font-weight:bold; text-transform:uppercase; color:#6b7280; border:1px solid #e5e7eb; text-align:right;">Cumulative Output</td>
                 </tr>
                 {% for row in buyer_breakdown %}
                 <tr>
                   <td style="padding:8px 10px; font-size:14px; border:1px solid #e5e7eb;">{{ row.buyer }}</td>
                   <td style="padding:8px 10px; font-size:14px; font-weight:bold; text-align:right; border:1px solid #e5e7eb;">{{ row.daily_output }}</td>
+                  <td style="padding:8px 10px; font-size:14px; font-weight:bold; text-align:right; border:1px solid #e5e7eb;">{{ row.cumulative_output }}</td>
                 </tr>
                 {% endfor %}
               </table>

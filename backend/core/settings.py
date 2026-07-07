@@ -222,6 +222,9 @@ EMAIL_PORT = os.getenv("EMAIL_PORT", 587)
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+# Fail fast on a dead/slow SMTP socket instead of hanging (or getting a
+# confusing "please run connect() first" further down the send path).
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", 30))
 
 # --- LOGGING CONFIGURATION ---
 # Logging configuration for both development and production environments
