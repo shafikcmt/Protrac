@@ -115,19 +115,38 @@ export function BundleIssuePanel({
                     v && setReadyView(v as CreatedBundlesView)
                   }
                   aria-label="Bundle list view"
+                  className="shrink-0"
                 >
-                  <ToggleGroupItem value="list" aria-label="List view">
-                    <List className="h-4 w-4" />
+                  <ToggleGroupItem
+                    value="list"
+                    aria-label="List view"
+                    className="gap-1.5 px-2.5 text-xs"
+                  >
+                    <List className="size-3.5" />
                     List
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="grouped" aria-label="Grouped view">
-                    <LayoutList className="h-4 w-4" />
+                  <ToggleGroupItem
+                    value="grouped"
+                    aria-label="Grouped view"
+                    className="gap-1.5 px-2.5 text-xs"
+                  >
+                    <LayoutList className="size-3.5" />
                     Grouped
                   </ToggleGroupItem>
                 </ToggleGroup>
               </div>
             )}
-            <ScrollArea className={SCROLL_HEIGHT}>
+            {/* Single both-axis scroll container. The flat table is wider than
+                the card; neutralising the shared Table's own overflow-x wrapper
+                (data-slot=table-container) lets THIS container do the scrolling,
+                so the horizontal scrollbar stays pinned to the visible viewport
+                instead of the bottom of the full-height table. */}
+            <div
+              className={cn(
+                SCROLL_HEIGHT,
+                "overflow-auto [&_[data-slot=table-container]]:overflow-visible"
+              )}
+            >
               <CreatedBundlesList
                 data={createdData}
                 isLoading={isLoadingCreated}
@@ -135,7 +154,7 @@ export function BundleIssuePanel({
                 view={readyView}
                 onSelect={onSelect}
               />
-            </ScrollArea>
+            </div>
           </TabsContent>
 
           <TabsContent value="recent-issues">
