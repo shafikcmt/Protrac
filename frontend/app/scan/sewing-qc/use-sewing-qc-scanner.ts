@@ -48,12 +48,24 @@ export const useSewingQCScanner = () => {
     onSuccess: (response: SewingQCScanResponse) => {
       toast.success(response.message || "QC check completed successfully");
 
-      // Refresh the sewing QC info
+      // Refresh the sewing QC info (recent QC checks list)
       const queryKey = apiHooks.getKeyByPath(
         "get",
         "/api/tracking/info/sewing-qc/"
       );
       queryClient.invalidateQueries({ queryKey });
+
+      // Also refresh "Today's QC summary" — its output/rework/pass-rate/DHU
+      // tiles, top-defects list and serial grid are a separate query the summary
+      // card owns, so without this they only update on the card's own interval,
+      // leaving stale numbers right after a scan. Predicate match is agnostic to
+      // its { date } query param.
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          JSON.stringify(query.queryKey).includes(
+            "/api/tracking/sewing-qc/daily-summary/"
+          ),
+      });
     },
     onError: (error: any) => {
       toast.error(extractErrorMessage(error));

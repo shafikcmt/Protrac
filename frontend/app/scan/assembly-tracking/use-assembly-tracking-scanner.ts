@@ -30,7 +30,7 @@ export const useAssemblyTrackingScanner = () => {
       },
     },
     {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
       refetchInterval: 30000,
     }
   );
@@ -44,7 +44,7 @@ export const useAssemblyTrackingScanner = () => {
       },
     },
     {
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
       refetchInterval: 30000,
     }
   );
@@ -57,12 +57,27 @@ export const useAssemblyTrackingScanner = () => {
     onSuccess: (response: AssemblyPartReceiveScanResponse) => {
       toast.success(response.message || "Assembly part received successfully");
 
-      // Refresh the assembly part receive info
-      const queryKey = apiHooks.getKeyByPath(
-        "get",
-        "/api/tracking/info/part-receive/"
-      );
-      queryClient.invalidateQueries({ queryKey });
+      // Refresh the assembly part receive info. Match on the endpoint path
+      // regardless of the exact key shape — a params-less key from getKeyByPath
+      // may not match the mounted query's key (which embeds { limit: 100 }), so
+      // predicate-based invalidation is the reliable way to trigger a refetch.
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          JSON.stringify(query.queryKey).includes(
+            "/api/tracking/info/part-receive/"
+          ),
+      });
+
+      // Also refresh "Today's summary" (totals, pending, serial grid, hourly
+      // bundles-vs-assembly). It's a separate query the summary card owns, so
+      // without this it only updates on its own interval — leaving stale counts
+      // right after a scan. Predicate match is agnostic to its { date } param.
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          JSON.stringify(query.queryKey).includes(
+            "/api/tracking/assembly/daily-summary/"
+          ),
+      });
     },
     onError: (error: unknown) => {
       toast.error(extractErrorMessage(error));
@@ -79,12 +94,23 @@ export const useAssemblyTrackingScanner = () => {
         response.message || "Garment issued for assembly successfully"
       );
 
-      // Refresh the garment issue info
-      const queryKey = apiHooks.getKeyByPath(
-        "get",
-        "/api/tracking/info/garment-issue-for-assembly/"
-      );
-      queryClient.invalidateQueries({ queryKey });
+      // Refresh the garment issue info (predicate match — see the part-receive
+      // mutation above for why key-shape-agnostic invalidation is used here).
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          JSON.stringify(query.queryKey).includes(
+            "/api/tracking/info/garment-issue-for-assembly/"
+          ),
+      });
+
+      // Also refresh "Today's summary" so its totals, pending count and serial
+      // grid reflect this issue immediately (see part-receive mutation above).
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          JSON.stringify(query.queryKey).includes(
+            "/api/tracking/assembly/daily-summary/"
+          ),
+      });
     },
     onError: (error: unknown) => {
       toast.error(extractErrorMessage(error));
@@ -155,6 +181,15 @@ export const useAssemblyTrackingScanner = () => {
     garmentIssueInfo: garmentIssueInfoQuery.data,
     isLoadingAssemblyInfo: assemblyPartReceiveInfoQuery.isLoading,
     isLoadingGarmentInfo: garmentIssueInfoQuery.isLoading,
+
+    // Manual refetch of both history queries (operator "Refresh" safety net).
+    refetchHistory: () => {
+      assemblyPartReceiveInfoQuery.refetch();
+      garmentIssueInfoQuery.refetch();
+    },
+    isRefreshingHistory:
+      assemblyPartReceiveInfoQuery.isFetching ||
+      garmentIssueInfoQuery.isFetching,
 
     // Mutation
     submitScan,
