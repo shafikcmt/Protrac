@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { BundleIssueScanForm } from "@/components/scanner/bundle-issue-scan-form";
 import { ScanFeedback } from "@/components/scanner/scan-feedback";
-import { BundleIssueInfo } from "@/components/scanner/bundle-issue-info";
-import { CreatedBundlesList } from "@/components/scanner/created-bundles-list";
+import { BundleIssuePanel } from "@/components/scanner/bundle-issue-panel";
 import { useBundleIssueScanner } from "./use-bundle-issue-scanner";
 
 export default function BundleIssueScannerPage() {
@@ -35,7 +34,7 @@ export default function BundleIssueScannerPage() {
   const [prefill, setPrefill] = useState<{ trackingCode: string } | null>(null);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:items-start">
       {/* Left Column - Scan Input and Feedback (1/3) */}
       <div className="space-y-6">
         <BundleIssueScanForm
@@ -53,17 +52,14 @@ export default function BundleIssueScannerPage() {
         />
       </div>
 
-      {/* Right Column - Bundle Issue Info + Created bundles worklist (2/3) */}
-      <div className="lg:col-span-2 space-y-6">
-        <BundleIssueInfo
-          data={bundleIssueInfo}
-          isLoading={isLoadingInfo}
-        />
-
-        <CreatedBundlesList
-          data={createdBundles}
-          isLoading={isLoadingCreated}
-          isError={isErrorCreated}
+      {/* Right Column - Bundle Issues (tabbed: Ready to Issue / Recent) (2/3) */}
+      <div className="lg:col-span-2">
+        <BundleIssuePanel
+          recentData={bundleIssueInfo}
+          isLoadingRecent={isLoadingInfo}
+          createdData={createdBundles}
+          isLoadingCreated={isLoadingCreated}
+          isErrorCreated={isErrorCreated}
           onSelect={(trackingCode) => setPrefill({ trackingCode })}
         />
       </div>
