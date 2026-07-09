@@ -36,6 +36,10 @@ interface BundleIssueScanFormProps {
     line_type: string;
   }>;
   isLoadingLines: boolean;
+  /** When set (e.g. a row clicked in the created-bundles list), fills the
+   *  Tracking Code field and focuses it. Each object identity is a new request,
+   *  so re-clicking the same code re-applies. */
+  prefill?: { trackingCode: string } | null;
 }
 
 export function BundleIssueScanForm({
@@ -43,6 +47,7 @@ export function BundleIssueScanForm({
   isLoading,
   sewingLines,
   isLoadingLines,
+  prefill,
 }: BundleIssueScanFormProps) {
   const trackingCodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,6 +63,16 @@ export function BundleIssueScanForm({
   useEffect(() => {
     trackingCodeInputRef.current?.focus();
   }, []);
+
+  // Fill + focus the Tracking Code field when a bundle row is clicked. Depends on
+  // the object identity so clicking the same code twice still re-applies.
+  useEffect(() => {
+    if (!prefill) return;
+    form.setValue("tracking_code", prefill.trackingCode, {
+      shouldValidate: true,
+    });
+    trackingCodeInputRef.current?.focus();
+  }, [prefill, form]);
 
   // Handle form submission
   const handleSubmit = (data: FormData) => {
