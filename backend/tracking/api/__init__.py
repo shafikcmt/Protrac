@@ -68,6 +68,7 @@ from .sewing_dashboard_v2 import (  # noqa
 from .scan import (  # noqa
     bundle_issue_scan,
     bundle_issue_info,
+    bundle_transfer,
     part_receive_scan,
     part_receive_info,
     assembly_tracking_issue_scan,

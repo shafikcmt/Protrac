@@ -59,6 +59,15 @@ const DailySummaryGarmentCell = z
     status: z.string(),
   })
   .passthrough();
+const DailySummaryOrderGroup = z
+  .object({
+    order_number: z.string(),
+    style: z.string(),
+    size: z.string(),
+    last_activity_at: z.string(),
+    garments_grid: z.array(DailySummaryGarmentCell),
+  })
+  .passthrough();
 const DailySummaryHour = z
   .object({
     hour: z.number().int(),
@@ -79,6 +88,7 @@ const AssemblyDailySummaryResponse = z
     recent_garments: z.array(DailySummaryGarment),
     active_order: DailySummaryActiveOrder.nullable(),
     garments_grid: z.array(DailySummaryGarmentCell),
+    order_groups: z.array(DailySummaryOrderGroup),
     hourly: z.array(DailySummaryHour),
   })
   .passthrough();
@@ -219,6 +229,29 @@ const BundleCreationPreview = z
     total_bundles: z.number().int(),
     distribution: z.array(z.number().int()),
     parts: z.array(BundleSetPreviewItem),
+  })
+  .passthrough();
+const BundleTransferRequestRequest = z
+  .object({
+    bundle_ids: z.array(z.number().int()),
+    sewing_line: z.number().int(),
+    reason: z.string().max(255).optional().default(""),
+  })
+  .passthrough();
+const BundleTransferItem = z
+  .object({
+    bundle_id: z.number().int(),
+    tracking_code: z.string(),
+    from_line: z.string().nullable(),
+    to_line: z.string(),
+  })
+  .passthrough();
+const BundleTransferResponse = z
+  .object({
+    success: z.boolean(),
+    message: z.string(),
+    transferred_count: z.number().int(),
+    transferred: z.array(BundleTransferItem),
   })
   .passthrough();
 const Buyer = z
@@ -365,6 +398,9 @@ const BundleIssueInfo = z
     assembly_part_name: z.string().nullable(),
     quantity: z.number().int(),
     issued_to_sewing_line: z.string(),
+    bundle_id: z.number().int(),
+    status: z.string(),
+    assigned_sewing_line_id: z.number().int().nullable(),
   })
   .passthrough();
 const BundleIssueInfoResponse = z
@@ -1080,6 +1116,15 @@ const SewingQCGarmentCell = z
     status: z.string(),
   })
   .passthrough();
+const SewingQCOrderGroup = z
+  .object({
+    order_number: z.string(),
+    style: z.string(),
+    size: z.string(),
+    last_activity_at: z.string(),
+    garments_grid: z.array(SewingQCGarmentCell),
+  })
+  .passthrough();
 const SewingQCDailySummaryResponse = z
   .object({
     line: z.string(),
@@ -1094,6 +1139,7 @@ const SewingQCDailySummaryResponse = z
     top_defects: z.array(SewingQCTopDefect),
     active_order: SewingQCActiveOrder.nullable(),
     garments_grid: z.array(SewingQCGarmentCell),
+    order_groups: z.array(SewingQCOrderGroup),
   })
   .passthrough();
 const Size = z
@@ -1229,6 +1275,7 @@ export const schemas = {
   DailySummaryGarment,
   DailySummaryActiveOrder,
   DailySummaryGarmentCell,
+  DailySummaryOrderGroup,
   DailySummaryHour,
   AssemblyDailySummaryResponse,
   BundleStatusEnum,
@@ -1246,6 +1293,9 @@ export const schemas = {
   OrderInfo,
   BundleSetPreviewItem,
   BundleCreationPreview,
+  BundleTransferRequestRequest,
+  BundleTransferItem,
+  BundleTransferResponse,
   Buyer,
   PaginatedBuyerList,
   BuyerRequest,
@@ -1340,6 +1390,9 @@ export const schemas = {
   SeasonRequest,
   PatchedSeasonRequest,
   SewingQCTopDefect,
+  SewingQCActiveOrder,
+  SewingQCGarmentCell,
+  SewingQCOrderGroup,
   SewingQCDailySummaryResponse,
   Size,
   PaginatedSizeList,
@@ -1677,6 +1730,21 @@ token if the refresh token is valid.`,
       },
     ],
     response: BundleCreationPreview,
+  },
+  {
+    method: "post",
+    path: "/api/tracking/bundles/transfer/",
+    alias: "tracking_bundles_transfer_create",
+    description: `Transfer one or more already-issued bundles to a different sewing line (correct a wrong-line issue). Requires a bundle-issue scanner. Only bundles with status &#x27;issued_to_sewing&#x27; that have not started assembly can be transferred; the batch is all-or-nothing.`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "body",
+        type: "Body",
+        schema: BundleTransferRequestRequest,
+      },
+    ],
+    response: BundleTransferResponse,
   },
   {
     method: "get",

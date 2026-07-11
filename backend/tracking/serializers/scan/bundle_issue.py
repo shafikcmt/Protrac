@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from tracking.models import ProductionLine
 from .shared import (
     ScanInfoFilterSerializer,
@@ -49,6 +50,16 @@ class BundleIssueInfoSerializer(BaseScanInfoSerializer):
     issued_to_sewing_line = serializers.CharField(
         source="bundle.assigned_sewing_line.name"
     )
+    # Extra bundle fields the transfer feature needs: a stable target id (the
+    # base `id` is the SCAN id, not the bundle's), the current line id, and the
+    # bundle status (to gate which rows are transferable in the UI).
+    bundle_id = serializers.IntegerField(source="bundle.id", read_only=True)
+    status = serializers.CharField(source="bundle.status", read_only=True)
+    assigned_sewing_line_id = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_assigned_sewing_line_id(self, obj):
+        return obj.bundle.assigned_sewing_line_id if obj.bundle else None
 
     class Meta(BaseScanInfoSerializer.Meta):
         fields = BaseScanInfoSerializer.Meta.fields + [
@@ -57,6 +68,9 @@ class BundleIssueInfoSerializer(BaseScanInfoSerializer):
             "assembly_part_name",
             "quantity",
             "issued_to_sewing_line",
+            "bundle_id",
+            "status",
+            "assigned_sewing_line_id",
         ]
 
 

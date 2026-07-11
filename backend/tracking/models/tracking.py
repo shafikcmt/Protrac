@@ -589,6 +589,48 @@ class Scan(BaseModel):
         super().save(*args, **kwargs)
 
 
+class BundleTransfer(BaseModel):
+    """Audit record of an already-issued bundle being manually moved between
+    sewing lines (correcting a wrong-line issue). One row per bundle moved.
+
+    ``created_by`` / ``created_at`` (from BaseModel) capture who performed the
+    transfer and when; ``from_line`` / ``to_line`` capture the correction.
+    """
+
+    bundle = models.ForeignKey(
+        Bundle, on_delete=models.CASCADE, related_name="transfers"
+    )
+    from_line = models.ForeignKey(
+        ProductionLine,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bundle_transfers_out",
+        limit_choices_to={"line_type": "sewing"},
+        help_text="Sewing line the bundle was on before the transfer.",
+    )
+    to_line = models.ForeignKey(
+        ProductionLine,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bundle_transfers_in",
+        limit_choices_to={"line_type": "sewing"},
+        help_text="Sewing line the bundle was moved to.",
+    )
+    reason = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional note on why the bundle was transferred.",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.bundle.tracking_code}: {self.from_line} → {self.to_line}"
+
+
 class LineStyleCompletion(BaseModel):
     """Manually marked completion of a style on a production line."""
 

@@ -37,6 +37,7 @@ from tracking.api import (
     GarmentHeatmapView,
     bundle_issue_scan,
     bundle_issue_info,
+    bundle_transfer,
     part_receive_scan,
     part_receive_info,
     assembly_tracking_issue_scan,
@@ -114,6 +115,7 @@ urlpatterns = [
     path("orders/<int:pk>/", OrderDetailView.as_view(), name="order-detail"),
     # Bundle endpoints
     path("bundles/", BundleListCreateView.as_view(), name="bundle-list-create"),
+    path("bundles/transfer/", bundle_transfer, name="bundle-transfer"),
     path("bundles/<int:pk>/", BundleDetailView.as_view(), name="bundle-detail"),
     path(
         "bundles/bulk-preview/",

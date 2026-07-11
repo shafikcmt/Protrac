@@ -2,6 +2,9 @@ from .bundle_issue import (  # noqa
     bundle_issue_scan,
     bundle_issue_info,
 )
+from .bundle_transfer import (  # noqa
+    bundle_transfer,
+)
 from .assembly_tracking_receive import (  # noqa
     part_receive_scan,
     part_receive_info,

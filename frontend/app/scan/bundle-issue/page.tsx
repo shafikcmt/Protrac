@@ -25,6 +25,10 @@ export default function BundleIssueScannerPage() {
     lastScanResult,
     scanError,
 
+    // Transfer
+    transferBundles,
+    isTransferring,
+
     // Actions
     resetScanResult,
   } = useBundleIssueScanner();
@@ -61,6 +65,9 @@ export default function BundleIssueScannerPage() {
           isLoadingCreated={isLoadingCreated}
           isErrorCreated={isErrorCreated}
           onSelect={(trackingCode) => setPrefill({ trackingCode })}
+          sewingLines={sewingLines}
+          onTransfer={transferBundles}
+          isTransferring={isTransferring}
         />
       </div>
     </div>

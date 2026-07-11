@@ -7,6 +7,13 @@ import { extractErrorMessage } from "@/lib/error-utils";
 
 type BundleIssueScanRequest = z.infer<typeof schemas.BundleIssueScanRequest>;
 type BundleIssueScanResponse = z.infer<typeof schemas.BundleIssueScanResponse>;
+type BundleTransferResponse = z.infer<typeof schemas.BundleTransferResponse>;
+
+export type BundleTransferInput = {
+  bundle_ids: number[];
+  sewing_line: number;
+  reason?: string;
+};
 
 export const useBundleIssueScanner = () => {
   const queryClient = useQueryClient();
@@ -73,6 +80,28 @@ export const useBundleIssueScanner = () => {
       toast.error(extractErrorMessage(error));
     },
   });
+  // Transfer already-issued bundles to a different sewing line (fix a wrong-line
+  // issue). Refreshes the recent-issues list so the corrected line shows at once.
+  const bundleTransferMutation = useMutation({
+    mutationFn: async (data: BundleTransferInput) => {
+      return api.tracking_bundles_transfer_create(data);
+    },
+    onSuccess: (response: BundleTransferResponse) => {
+      toast.success(response.message || "Bundles transferred");
+      queryClient.invalidateQueries({
+        queryKey: apiHooks.getKeyByPath("get", "/api/tracking/info/bundle-issue/"),
+      });
+      // The bundles list (any status filter) may also reflect the new line.
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          JSON.stringify(query.queryKey).includes("/api/tracking/bundles/"),
+      });
+    },
+    onError: (error: any) => {
+      toast.error(extractErrorMessage(error));
+    },
+  });
+
   // Filter sewing lines from production lines
   const sewingLines =
     productionLinesQuery.data?.results?.filter(
@@ -82,6 +111,11 @@ export const useBundleIssueScanner = () => {
   const submitScan = (data: BundleIssueScanRequest) => {
     bundleIssueMutation.mutate(data);
   };
+
+  // Async so the caller (confirm dialog) can await success before clearing
+  // selection / closing.
+  const transferBundles = (data: BundleTransferInput) =>
+    bundleTransferMutation.mutateAsync(data);
 
   return {
     // Queries
@@ -100,6 +134,10 @@ export const useBundleIssueScanner = () => {
     isScanning: bundleIssueMutation.isPending,
     lastScanResult: bundleIssueMutation.data,
     scanError: bundleIssueMutation.error,
+
+    // Transfer (fix wrong-line issues)
+    transferBundles,
+    isTransferring: bundleTransferMutation.isPending,
 
     // Actions
     resetScanResult: bundleIssueMutation.reset,
