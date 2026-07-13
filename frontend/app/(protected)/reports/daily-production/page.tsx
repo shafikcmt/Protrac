@@ -36,7 +36,10 @@ import {
 import { ProductionReportFilters } from "./production-report-filters";
 import { ProductionReportTable } from "./production-report-table";
 import { useDailyProductionReport, useLineStyleCompletions, undoStyleComplete, type LineStyleCompletionRecord } from "@/hooks/api";
-import { generateDailyProductionExcel } from "@/lib/reports/daily-production-report";
+import {
+  generateDailyProductionExcel,
+  generateDailyProductionPDF,
+} from "@/lib/reports/daily-production-report";
 import { cn } from "@/lib/utils";
 
 interface FiltersState {
@@ -78,6 +81,7 @@ export default function DailyProductionPage() {
   const [undoTarget, setUndoTarget] = useState<LineStyleCompletionRecord | null>(null);
   const [isUndoing, setIsUndoing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const handleFiltersChange = (newFilters: FiltersState) => {
     setFilters((prev) => {
@@ -157,6 +161,18 @@ export default function DailyProductionPage() {
     }
   };
 
+  const handleExportPdf = async () => {
+    if (!reportData?.production_lines?.length) return;
+    setIsExportingPdf(true);
+    try {
+      await generateDailyProductionPDF(reportData, filters);
+    } catch (e: any) {
+      toast.error(`PDF export failed: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   if (error) {
     return (
       <>
@@ -219,6 +235,16 @@ export default function DailyProductionPage() {
               >
                 <Download className={cn("h-4 w-4", isExporting && "animate-pulse")} />
                 {isExporting ? "Exporting…" : "Export Excel"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportPdf}
+                disabled={isLoading || !reportData || isExportingPdf}
+                className="gap-2"
+              >
+                <Download className={cn("h-4 w-4", isExportingPdf && "animate-pulse")} />
+                {isExportingPdf ? "Exporting…" : "Export PDF"}
               </Button>
             </div>
           </div>

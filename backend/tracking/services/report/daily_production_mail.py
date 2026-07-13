@@ -58,6 +58,9 @@ def _logo_path() -> Optional[str]:
 # ── Shared styling (mirrors the frontend export's blue header + grey subtotal) ──
 HEADER_FILL = PatternFill("solid", fgColor="2563EB")
 SUBTOTAL_FILL = PatternFill("solid", fgColor="E5E7EB")
+# Light amber highlight for old-style-pending rows — mirrors the web view's
+# Tailwind `bg-amber-50` (#FFFBEB) so the emailed export flags the same rows.
+PENDING_FILL = PatternFill("solid", fgColor="FFFBEB")
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 BOLD_FONT = Font(bold=True, size=11)
 _THIN = Side(style="thin", color="D1D5DB")
@@ -325,9 +328,15 @@ def build_daily_production_xlsx(
             order["packed"]["day"], order["packed"]["cumulative"],
             _remarks_text(order),
         ]
+        # Light amber fill for old-style-pending rows (not hidden), mirroring the
+        # web view's bg-amber-50 highlight — the same rows that get the compact
+        # "Old:…→…, New:✓" remarks.
+        is_pending = bool(order.get("is_pending_transition")) and not order.get("is_hidden")
         for c, val in enumerate(values, start=1):
             cell = ws.cell(row=row_idx, column=c, value=val)
             cell.border = BORDER
+            if is_pending:
+                cell.fill = PENDING_FILL
             if 4 <= c <= 29:
                 cell.alignment = Alignment(horizontal="right")
             if 22 <= c <= 25:

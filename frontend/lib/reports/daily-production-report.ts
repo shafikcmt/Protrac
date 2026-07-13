@@ -15,6 +15,9 @@ const BORDER = {
 // Shaded fill for the per-buyer subtotal rows (light grey, same as the
 // finishing report's TOTAL rows).
 const SUBTOTAL_FILL = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFE5E7EB" } };
+// Light amber highlight for old-style-pending rows — mirrors the web view's
+// Tailwind `bg-amber-50` (#FFFBEB) so the export flags the same transition rows.
+const PENDING_FILL = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFFFFBEB" } };
 
 // Percentage number format: a pre-computed decimal (e.g. 85.34) shown as
 // "85.34%". Applied to static values only — never an Excel formula — so the
@@ -373,8 +376,15 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
       remarksText(order),
     ]);
 
+    // Light amber fill for old-style-pending rows (not hidden), mirroring the
+    // web view's bg-amber-50 highlight — the same rows that get the compact
+    // "Old:…→…, New:✓" remarks. Applied before per-cell styling so borders/
+    // alignment/number formats still take effect on top.
+    const isPending = !!order.is_pending_transition && !order.is_hidden;
+
     row.eachCell((cell, col) => {
       cell.border = BORDER;
+      if (isPending) cell.fill = PENDING_FILL;
       if (col >= 4 && col <= 29) cell.alignment = { horizontal: "right" };
       // Percentage columns: Efficiency (22,23) + DHU (24,25), 2 decimals + %.
       if (col >= 22 && col <= 25) cell.numFmt = PCT_FMT;
@@ -563,44 +573,6 @@ function buildFlatRows(reportData: any): FlatRow[] {
     rows.push({ kind: "grand", cells: g });
   }
   return rows;
-}
-
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-/**
- * Export the Daily Production Report as a plain, purely-tabular CSV — the same
- * numbers/rows as the Excel export (buyer subtotals + a final "G. Total"),
- * flattened to single-tier columns with no merges or logo.
- */
-export function generateDailyProductionCSV(reportData: any, filters: any) {
-  const reportDate = reportData?.report_date || filters?.report_date || format(new Date(), "yyyy-MM-dd");
-
-  // RFC 4180: wrap in quotes when the value contains a quote/comma/newline, and
-  // double any embedded quotes.
-  const escapeCSV = (v: any) => {
-    const s = v === null || v === undefined ? "" : String(v);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-
-  const lines: string[] = [];
-  lines.push(escapeCSV(`Humana Apparels Pvt. Ltd. - Daily Production Report - ${reportDate}`));
-  lines.push(FLAT_COLUMNS.map(escapeCSV).join(","));
-  buildFlatRows(reportData).forEach((r) => {
-    lines.push(r.cells.map(escapeCSV).join(","));
-  });
-
-  // Leading BOM so Excel/Sheets read the em-dash and buyer names as UTF-8.
-  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
-  triggerDownload(blob, `Daily_Production_Report_${reportDate}.csv`);
 }
 
 /**

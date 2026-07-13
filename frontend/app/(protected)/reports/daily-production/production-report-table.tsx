@@ -303,7 +303,7 @@ export function ProductionReportTable({
 
       <CardContent className="p-0">
         <div className="w-full overflow-hidden print:overflow-visible">
-          <Table className="[&_th]:px-1 [&_td]:px-1 [&_th]:text-[11px] [&_td]:text-[11px] print:[&_th]:text-[8px] print:[&_td]:text-[8px] print:[&_th]:px-0.5 print:[&_td]:px-0.5">
+          <Table className="[&_th]:px-1 [&_td]:px-1 [&_th]:text-[11px] [&_td]:text-[11px] [&_td]:tabular-nums [&_thead_th]:font-semibold print:[&_th]:text-[8px] print:[&_td]:text-[8px] print:[&_th]:px-0.5 print:[&_td]:px-0.5">
             <TableHeader>
               <TableRow>
                 <TableHead>LINE</TableHead>
