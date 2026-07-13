@@ -123,6 +123,8 @@ def build_display_by_buyer(report_data: List[Dict[str, Any]]) -> Dict[str, List[
                     "buyer": buyer,
                     "style": style,
                     "is_hidden": is_hidden,
+                    "is_pending_transition": False,
+                    "needs_manual_complete": False,
                     "order_quantity": 0,
                     "input": 0,
                     "working_days": order.get("working_days") or 1,
@@ -138,6 +140,10 @@ def build_display_by_buyer(report_data: List[Dict[str, Any]]) -> Dict[str, List[
                     acc[m] = {"day": 0, "cumulative": 0}
                 bucket.append(acc)
 
+            if order.get("is_pending_transition"):
+                acc["is_pending_transition"] = True
+            if order.get("needs_manual_complete"):
+                acc["needs_manual_complete"] = True
             acc["order_quantity"] += _num(order.get("order_quantity"))
             acc["input"] += _num(order.get("input"))
             for m in _METRICS:
@@ -190,10 +196,10 @@ def _buyer_cumulative_output(orders: List[dict]) -> int:
 # Excel generation (openpyxl) — returns in-memory bytes.
 # ---------------------------------------------------------------------------
 _COL_WIDTHS = [
-    10, 16, 18, 11, 8, 7, 10,  # Line..Input
-    9, 9, 9, 9, 9, 9, 11, 11, 9, 9, 11, 11, 10, 10,  # Front..Output
-    11, 11, 9, 9, 11, 11, 10, 10,  # Efficiency..Packed
-    28,  # Remarks
+    9, 14, 16, 9, 7, 6, 8,  # Line..Input
+    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,  # Front..Output
+    7, 7, 7, 7, 7, 7, 7, 7,  # Efficiency..Packed
+    14,  # Remarks
 ]
 
 # [group label, left col (1-based), day-sub, right-sub]
@@ -395,11 +401,22 @@ def build_daily_production_xlsx(
 
 
 def _remarks_text(order: dict) -> str:
+    """Compact, single-line remarks so the Remarks column stays narrow and never
+    forces a horizontal scrollbar. Built from structured fields (not by parsing
+    the verbose backend string). Hidden rows keep the "Hidden" tag;
+    pending-transition rows collapse to e.g. "Old:1204→998, New:✓" (order qty →
+    cumulative output), with ", Mark" appended when manual completion is
+    required. Non-transition rows stay blank. The full explanatory text still
+    lives in the on-screen tooltip and the backend source string, untouched."""
     if order.get("is_hidden"):
         return "Hidden"
-    remarks = order.get("remarks")
-    if order.get("is_pending_transition") and remarks:
-        return str(remarks).replace(" | ", " · ")
+    if order.get("is_pending_transition"):
+        old_qty = int(_num(order.get("order_quantity")))
+        output = int(_num((order.get("output") or {}).get("cumulative")))
+        text = f"Old:{old_qty}→{output}, New:✓"
+        if order.get("needs_manual_complete"):
+            text += ", Mark"
+        return text
     return ""
 
 

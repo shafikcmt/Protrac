@@ -78,6 +78,7 @@ function buildDisplayByBuyer(reportData: any): Record<string, any[]> {
           inspection: { day: 0, cumulative: 0 },
           packed: { day: 0, cumulative: 0 },
           is_pending_transition: false,
+          needs_manual_complete: false,
           pending_quantity: 0,
           remarks: "",
           __dhuDayNum: 0,
@@ -93,6 +94,7 @@ function buildDisplayByBuyer(reportData: any): Record<string, any[]> {
       acc.__items.push(order);
       acc.order_quantity += num(order.order_quantity);
       acc.input += num(order.input);
+      if (order.needs_manual_complete) acc.needs_manual_complete = true;
       if (order.is_pending_transition) {
         acc.is_pending_transition = true;
         acc.pending_quantity += num(order.pending_quantity);
@@ -147,12 +149,21 @@ function buildDisplayByBuyer(reportData: any): Record<string, any[]> {
 const efficiency = (outputPart: number, input: number) =>
   input > 0 ? (outputPart / input) * 100 : 0;
 
-// On-screen remarks cell shows a "Hidden" badge or the pending-transition text
-// (with " | " normalised to " · "); mirror that as plain text.
+// Compact, single-line remarks for the exports so the Remarks column stays
+// narrow and never forces a horizontal scrollbar. Built from structured fields
+// (not by parsing the verbose backend string). Hidden rows keep the "Hidden"
+// tag; pending-transition rows collapse to e.g. "Old:1204→998, New:✓" (order
+// qty → cumulative output), with ", Mark" appended when manual completion is
+// required. Non-transition rows stay blank. The full explanatory text still
+// lives in the on-screen tooltip and the backend source string, untouched.
 const remarksText = (order: any) => {
   if (order.is_hidden) return "Hidden";
-  if (order.is_pending_transition && order.remarks) {
-    return String(order.remarks).replace(/\s*\|\s*/g, " · ");
+  if (order.is_pending_transition) {
+    const oldQty = num(order.order_quantity);
+    const output = num(order.output?.cumulative);
+    let text = `Old:${oldQty}→${output}, New:✓`;
+    if (order.needs_manual_complete) text += ", Mark";
+    return text;
   }
   return "";
 };
@@ -181,36 +192,36 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
   // real factory report: Front, Back, Sleeve, Hood/Collar, Lining, Assembly
   // Input, Output, Efficiency %, DHU %, Inspection, Packed.
   sheet.columns = [
-    { width: 10 }, // 1  Line
-    { width: 16 }, // 2  Buyer
-    { width: 18 }, // 3  Style
-    { width: 11 }, // 4  Order Qty
-    { width: 8 },  // 5  W Days
-    { width: 7 },  // 6  Hrs
-    { width: 10 }, // 7  Input
-    { width: 9 },  // 8  Front Day
-    { width: 9 },  // 9  Front Cumm
-    { width: 9 },  // 10 Back Day
-    { width: 9 },  // 11 Back Cumm
-    { width: 9 },  // 12 Sleeve Day
-    { width: 9 },  // 13 Sleeve Cumm
-    { width: 11 }, // 14 Hood/Collar Day
-    { width: 11 }, // 15 Hood/Collar Cumm
-    { width: 9 },  // 16 Lining Day
-    { width: 9 },  // 17 Lining Cumm
-    { width: 11 }, // 18 Assembly Input Day
-    { width: 11 }, // 19 Assembly Input Cumm
-    { width: 10 }, // 20 Output Day
-    { width: 10 }, // 21 Output Cumm
-    { width: 11 }, // 22 Efficiency Day
-    { width: 11 }, // 23 Efficiency Avg
-    { width: 9 },  // 24 DHU Day
-    { width: 9 },  // 25 DHU Avg
-    { width: 11 }, // 26 Inspection Day
-    { width: 11 }, // 27 Inspection Cumm
-    { width: 10 }, // 28 Packed Day
-    { width: 10 }, // 29 Packed Cumm
-    { width: 28 }, // 30 Remarks
+    { width: 9 },  // 1  Line
+    { width: 14 }, // 2  Buyer
+    { width: 16 }, // 3  Style
+    { width: 9 },  // 4  Order Qty
+    { width: 7 },  // 5  W Days
+    { width: 6 },  // 6  Hrs
+    { width: 8 },  // 7  Input
+    { width: 7 },  // 8  Front Day
+    { width: 7 },  // 9  Front Cumm
+    { width: 7 },  // 10 Back Day
+    { width: 7 },  // 11 Back Cumm
+    { width: 7 },  // 12 Sleeve Day
+    { width: 7 },  // 13 Sleeve Cumm
+    { width: 7 },  // 14 Hood/Collar Day
+    { width: 7 },  // 15 Hood/Collar Cumm
+    { width: 7 },  // 16 Lining Day
+    { width: 7 },  // 17 Lining Cumm
+    { width: 7 },  // 18 Assembly Input Day
+    { width: 7 },  // 19 Assembly Input Cumm
+    { width: 7 },  // 20 Output Day
+    { width: 7 },  // 21 Output Cumm
+    { width: 7 },  // 22 Efficiency Day
+    { width: 7 },  // 23 Efficiency Avg
+    { width: 7 },  // 24 DHU Day
+    { width: 7 },  // 25 DHU Avg
+    { width: 7 },  // 26 Inspection Day
+    { width: 7 },  // 27 Inspection Cumm
+    { width: 7 },  // 28 Packed Day
+    { width: 7 },  // 29 Packed Cumm
+    { width: 14 }, // 30 Remarks
   ];
 
   const LAST_COL = 30;
@@ -245,8 +256,6 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
   for (let c = 1; c <= LAST_COL; c++) {
     titleBorderRow.getCell(c).border = { bottom: { style: "thin", color: { argb: "FFD1D5DB" } } };
   }
-  sheet.addRow([]); // spacer
-  sheet.addRow([]); // spacer
 
   /* ── Two-tier header ──
      Group-header row + sub-header row. Single columns are merged vertically
@@ -308,8 +317,19 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
     }
   });
 
-  // Freeze everything down to and including the sub-header row.
-  sheet.views = [{ state: "frozen", ySplit: subHeaderRowIdx }];
+  // Freeze the header rows (ySplit) AND the first 7 identity columns
+  // (Line…Input, xSplit) so they stay visible while scrolling right through
+  // Front/Back/.../Packed/Remarks.
+  sheet.views = [{ state: "frozen", xSplit: 7, ySplit: subHeaderRowIdx }];
+
+  // Print/PDF-friendly: landscape A4, scaled to fit all columns on one page
+  // wide (fitToHeight: 0 lets it flow onto multiple pages vertically).
+  sheet.pageSetup = {
+    orientation: "landscape",
+    fitToWidth: 1,
+    fitToHeight: 0,
+    paperSize: 9, // A4
+  };
 
   /* ── Data rows, grouped by buyer with a subtotal after each ── */
   const displayByBuyer = buildDisplayByBuyer(reportData);
@@ -396,7 +416,6 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
         on-screen summary strip. All static values, no formulas. ── */
   const summary = reportData?.summary;
   if (summary) {
-    sheet.addRow([]); // spacer
     const footerHeaderRowIdx = sheet.rowCount + 1;
     const labels = [
       "Total Lines",
@@ -461,4 +480,193 @@ export async function generateDailyProductionExcel(reportData: any, filters: any
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ===========================================================================
+// Shared flat (single-tier) row model — feeds both the CSV and PDF exports so
+// their columns, subtotals and grand-total match the Excel version one-for-one.
+// ===========================================================================
+const FLAT_COLUMNS = [
+  "Line", "Buyer", "Style", "Order Qty", "W Days", "Hrs", "Input",
+  "Front Day", "Front Cumm", "Back Day", "Back Cumm", "Sleeve Day", "Sleeve Cumm",
+  "Hood/Collar Day", "Hood/Collar Cumm", "Lining Day", "Lining Cumm",
+  "Assembly Input Day", "Assembly Input Cumm", "Output Day", "Output Cumm",
+  "Efficiency % Day", "Efficiency % Avg", "DHU % Day", "DHU % Avg",
+  "Inspection Day", "Inspection Cumm", "Packed Day", "Packed Cumm", "Remarks",
+];
+
+type FlatRowKind = "data" | "subtotal" | "grand";
+interface FlatRow {
+  kind: FlatRowKind;
+  cells: Array<string | number>;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+function buildFlatRows(reportData: any): FlatRow[] {
+  const displayByBuyer = buildDisplayByBuyer(reportData);
+  const rows: FlatRow[] = [];
+
+  Object.entries(displayByBuyer).forEach(([buyer, orders]) => {
+    orders.forEach((order: any) => {
+      const hoodDay = num(order.hood?.day) + num(order.collar?.day);
+      const hoodCumm = num(order.hood?.cumulative) + num(order.collar?.cumulative);
+      const input = num(order.input);
+      rows.push({
+        kind: "data",
+        cells: [
+          order.line ?? "",
+          order.buyer ?? "",
+          order.style ?? "",
+          num(order.order_quantity),
+          order.working_days ?? "",
+          order.working_hours == null ? EM_DASH : round2(Number(order.working_hours)),
+          input,
+          num(order.front?.day), num(order.front?.cumulative),
+          num(order.back?.day), num(order.back?.cumulative),
+          num(order.sleeve?.day), num(order.sleeve?.cumulative),
+          hoodDay, hoodCumm,
+          num(order.lining?.day), num(order.lining?.cumulative),
+          num(order.assembly_input?.day), num(order.assembly_input?.cumulative),
+          num(order.output?.day), num(order.output?.cumulative),
+          round2(efficiency(num(order.output?.day), input)),
+          round2(efficiency(num(order.output?.cumulative), input)),
+          round2(num(order.dhu_day)), round2(num(order.dhu_average)),
+          num(order.inspection?.day), num(order.inspection?.cumulative),
+          num(order.packed?.day), num(order.packed?.cumulative),
+          remarksText(order),
+        ],
+      });
+    });
+
+    const visible = orders.filter((o: any) => !o.is_hidden);
+    const sum = (fn: (o: any) => number) => visible.reduce((s: number, o: any) => s + fn(o), 0);
+    const sub: Array<string | number> = new Array(FLAT_COLUMNS.length).fill("");
+    sub[0] = `${buyer} Total`;
+    sub[3] = sum((o) => num(o.order_quantity)); // Order Qty
+    sub[6] = sum((o) => num(o.input)); // Input
+    sub[19] = sum((o) => num(o.output?.day)); // Output Day
+    sub[20] = sum((o) => num(o.output?.cumulative)); // Output Cumm
+    rows.push({ kind: "subtotal", cells: sub });
+  });
+
+  const summary = reportData?.summary;
+  if (summary) {
+    const g: Array<string | number> = new Array(FLAT_COLUMNS.length).fill("");
+    g[0] = "G. Total";
+    g[3] = num(summary.total_order_quantity);
+    g[6] = num(summary.daily_input);
+    g[19] = num(summary.daily_output);
+    g[21] = round2(num(summary.overall_efficiency)); // Efficiency % Day slot
+    g[25] = num(summary.daily_inspection);
+    g[27] = num(summary.daily_packed);
+    rows.push({ kind: "grand", cells: g });
+  }
+  return rows;
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Export the Daily Production Report as a plain, purely-tabular CSV — the same
+ * numbers/rows as the Excel export (buyer subtotals + a final "G. Total"),
+ * flattened to single-tier columns with no merges or logo.
+ */
+export function generateDailyProductionCSV(reportData: any, filters: any) {
+  const reportDate = reportData?.report_date || filters?.report_date || format(new Date(), "yyyy-MM-dd");
+
+  // RFC 4180: wrap in quotes when the value contains a quote/comma/newline, and
+  // double any embedded quotes.
+  const escapeCSV = (v: any) => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const lines: string[] = [];
+  lines.push(escapeCSV(`Humana Apparels Pvt. Ltd. - Daily Production Report - ${reportDate}`));
+  lines.push(FLAT_COLUMNS.map(escapeCSV).join(","));
+  buildFlatRows(reportData).forEach((r) => {
+    lines.push(r.cells.map(escapeCSV).join(","));
+  });
+
+  // Leading BOM so Excel/Sheets read the em-dash and buyer names as UTF-8.
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  triggerDownload(blob, `Daily_Production_Report_${reportDate}.csv`);
+}
+
+/**
+ * Export the Daily Production Report as an A3-landscape PDF via jspdf +
+ * jspdf-autotable. A3 (not A4) because 30 columns at a readable 6-7pt would be
+ * unusably cramped on A4 landscape; A3 fits them all on one page width.
+ */
+export async function generateDailyProductionPDF(reportData: any, filters: any) {
+  const { jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default;
+
+  const reportDate = reportData?.report_date || filters?.report_date || format(new Date(), "yyyy-MM-dd");
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a3" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  /* ── Title block (mirrors the Excel banner: navy heading, optional logo) ── */
+  if (COMPANY_LOGO_BASE64) {
+    try {
+      doc.addImage(COMPANY_LOGO_BASE64, "PNG", 40, 24, 90, 41);
+    } catch {
+      /* a bad/oversized logo must not break the export */
+    }
+  }
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(27, 58, 92); // navy #1B3A5C
+  doc.setFontSize(16);
+  doc.text("Humana Apparels Pvt. Ltd.", pageWidth / 2, 40, { align: "center" });
+  doc.setFontSize(12);
+  doc.text("Daily Production Report", pageWidth / 2, 58, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(107, 114, 128);
+  doc.setFontSize(9);
+  doc.text(`Report Date: ${reportDate}`, pageWidth / 2, 74, { align: "center" });
+
+  const rows = buildFlatRows(reportData);
+  const body = rows.map((r) => r.cells.map((c) => (typeof c === "number" ? String(c) : c)));
+
+  // Right-align every numeric column (Order Qty … Packed Cumm); text stays left.
+  const columnStyles: Record<number, any> = {};
+  for (let i = 3; i <= 28; i++) columnStyles[i] = { halign: "right" };
+  // Remarks (last column, index 29): fixed narrow width and single-line ellipsis
+  // so the now-compact text can never wrap and inflate row height / total width.
+  columnStyles[29] = { cellWidth: 58, overflow: "ellipsize" };
+
+  autoTable(doc, {
+    head: [FLAT_COLUMNS],
+    body,
+    startY: 88,
+    theme: "grid",
+    showHead: "everyPage", // repeat column headers on every page
+    styles: { fontSize: 6, cellPadding: 2, overflow: "linebreak", lineColor: [209, 213, 219], lineWidth: 0.3 },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold", halign: "center" },
+    columnStyles,
+    didParseCell: (data: any) => {
+      if (data.section !== "body") return;
+      const kind = rows[data.row.index]?.kind;
+      if (kind === "subtotal") {
+        data.cell.styles.fillColor = [229, 231, 235];
+        data.cell.styles.fontStyle = "bold";
+      } else if (kind === "grand") {
+        data.cell.styles.fillColor = [219, 234, 254];
+        data.cell.styles.fontStyle = "bold";
+      }
+    },
+  });
+
+  doc.save(`Daily_Production_Report_${reportDate}.pdf`);
 }

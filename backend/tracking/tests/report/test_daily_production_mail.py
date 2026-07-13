@@ -139,7 +139,7 @@ class TestDailyProductionMail:
         ws = wb.active
         assert ws["A1"].value == "Humana Apparels Pvt. Ltd."
         # Two-tier header includes the Lining group (col 16 on the group row).
-        assert ws.cell(row=6, column=16).value == "Lining"
+        assert ws.cell(row=7, column=16).value == "Lining"
 
     def test_html_and_text_alternatives(self, patched_report_data):
         _make_recipient("manager@example.com", RecipientType.TO)

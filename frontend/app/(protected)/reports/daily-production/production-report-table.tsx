@@ -284,8 +284,8 @@ export function ProductionReportTable({
 
   return (
     <>
-    <Card>
-      <CardHeader>
+    <Card className="print:border-0 print:shadow-none">
+      <CardHeader className="py-3">
         <div className="flex justify-between items-start">
           <div>
             <CardTitle className="text-lg">
@@ -302,17 +302,17 @@ export function ProductionReportTable({
       </CardHeader>
 
       <CardContent className="p-0">
-        <div className="w-full overflow-hidden">
-          <Table>
+        <div className="w-full overflow-hidden print:overflow-visible">
+          <Table className="[&_th]:px-1 [&_td]:px-1 [&_th]:text-[11px] [&_td]:text-[11px] print:[&_th]:text-[8px] print:[&_td]:text-[8px] print:[&_th]:px-0.5 print:[&_td]:px-0.5">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-16">LINE</TableHead>
-                <TableHead className="w-20">BUYER</TableHead>
-                <TableHead className="w-24">STYLE</TableHead>
-                <TableHead className="w-20 text-right">Order Qty</TableHead>
-                <TableHead className="w-20 text-right">W Days</TableHead>
-                <TableHead className="w-16 text-right">Hrs</TableHead>
-                <TableHead className="w-16 text-right">Input</TableHead>
+                <TableHead>LINE</TableHead>
+                <TableHead>BUYER</TableHead>
+                <TableHead>STYLE</TableHead>
+                <TableHead className="text-right">Order Qty</TableHead>
+                <TableHead className="text-right">W Days</TableHead>
+                <TableHead className="text-right">Hrs</TableHead>
+                <TableHead className="text-right">Input</TableHead>
 
                 <TableHead className="text-center" colSpan={2}>
                   Front
@@ -348,7 +348,7 @@ export function ProductionReportTable({
                   Packed
                 </TableHead>
 
-                <TableHead className="w-32">REMARKS</TableHead>
+                <TableHead>REMARKS</TableHead>
               </TableRow>
 
               <TableRow>
@@ -775,8 +775,8 @@ export function ProductionReportTable({
 
         {reportData.summary && (
           <>
-            <Separator className="my-4" />
-            <div className="px-6 pb-4">
+            <Separator className="my-2" />
+            <div className="px-4 pb-3 pt-1">
               <div className="grid grid-cols-4 md:grid-cols-8 gap-4 text-sm">
                 <div className="text-center">
                   <p className="font-medium text-muted-foreground">Total Lines</p>
