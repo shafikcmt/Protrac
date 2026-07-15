@@ -26,6 +26,30 @@ class SewingQCGarmentCellSerializer(serializers.Serializer):
     )
 
 
+class SewingQCOrderGroupSerializer(serializers.Serializer):
+    """One order active today (size-wise), with its own sewing-QC serial grid."""
+
+    order_number = serializers.CharField()
+    style = serializers.CharField()
+    size = serializers.CharField()
+    last_activity_at = serializers.CharField(
+        help_text="ISO timestamp of this order's most recent QC scan today (sort key)"
+    )
+    garments_grid = SewingQCGarmentCellSerializer(many=True)
+
+
+class SewingQCHourSerializer(serializers.Serializer):
+    """One hourly bucket: per-hour target vs QC-pass actual."""
+
+    hour = serializers.IntegerField(help_text="1-based hour bucket (H1, H2, ...)")
+    target = serializers.IntegerField(
+        help_text="Per-hour target from the line's daily target (0 when none set)"
+    )
+    actual = serializers.IntegerField(
+        help_text="Sewing-QC PASS records bucketed into this hour"
+    )
+
+
 class SewingQCDailySummaryResponseSerializer(serializers.Serializer):
     """Today's sewing-QC tally for the scanner's line (paper-register style)."""
 
@@ -41,3 +65,5 @@ class SewingQCDailySummaryResponseSerializer(serializers.Serializer):
     top_defects = SewingQCTopDefectSerializer(many=True)
     active_order = SewingQCActiveOrderSerializer(allow_null=True)
     garments_grid = SewingQCGarmentCellSerializer(many=True)
+    order_groups = SewingQCOrderGroupSerializer(many=True)
+    hourly = SewingQCHourSerializer(many=True)

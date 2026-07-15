@@ -9,6 +9,7 @@ from tracking.models.constants import (
     BundleStatus,
     GarmentStatus,
     QualityCheckStatus,
+    QualityCheckCheckpoint,
     ScanEventType,
 )
 from tracking.models.helpers import (
@@ -542,6 +543,12 @@ class QualityCheck(BaseModel):
         max_length=20,
         choices=QualityCheckStatus.choices,
         default=QualityCheckStatus.PASS,
+    )
+    checkpoint = models.CharField(
+        max_length=20,
+        choices=QualityCheckCheckpoint.choices,
+        default=QualityCheckCheckpoint.SEWING_QC,
+        help_text="Which QC stage recorded this check (sewing vs finishing).",
     )
     defects = models.ManyToManyField(Defect, blank=True, related_name="quality_checks")
 

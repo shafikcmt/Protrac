@@ -971,6 +971,12 @@ const SewingLineDashboardV2 = z
     total_input: z.number().int().optional().default(0),
     total_output: z.number().int().optional().default(0),
     line_wip: z.number().int(),
+    active_style_id: z.number().int().nullish(),
+    active_style_name: z.string().nullish(),
+    pending_old_style_count: z.number().int().optional().default(0),
+    pending_old_pending_qty: z.number().int().optional().default(0),
+    assembly_input_day: z.number().int().optional().default(0),
+    assembly_input_cumulative: z.number().int().optional().default(0),
   })
   .passthrough();
 const BundleIssueScanRequest = z
@@ -1125,6 +1131,13 @@ const SewingQCOrderGroup = z
     garments_grid: z.array(SewingQCGarmentCell),
   })
   .passthrough();
+const SewingQCHour = z
+  .object({
+    hour: z.number().int(),
+    target: z.number().int(),
+    actual: z.number().int(),
+  })
+  .passthrough();
 const SewingQCDailySummaryResponse = z
   .object({
     line: z.string(),
@@ -1140,6 +1153,7 @@ const SewingQCDailySummaryResponse = z
     active_order: SewingQCActiveOrder.nullable(),
     garments_grid: z.array(SewingQCGarmentCell),
     order_groups: z.array(SewingQCOrderGroup),
+    hourly: z.array(SewingQCHour),
   })
   .passthrough();
 const Size = z
@@ -1393,6 +1407,7 @@ export const schemas = {
   SewingQCActiveOrder,
   SewingQCGarmentCell,
   SewingQCOrderGroup,
+  SewingQCHour,
   SewingQCDailySummaryResponse,
   Size,
   PaginatedSizeList,

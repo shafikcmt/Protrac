@@ -7,6 +7,7 @@ from tracking.models.constants import (
     ScannerType,
     GarmentStatus,
     QualityCheckStatus,
+    QualityCheckCheckpoint,
     ScanEventType,
 )
 
@@ -58,6 +59,7 @@ def _create_quality_check_record(
     quality_check = QualityCheck.objects.create(
         garment=garment,
         status=qc_status,
+        checkpoint=QualityCheckCheckpoint.FINISHING_QC,
     )
 
     # Add defects if any

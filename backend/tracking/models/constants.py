@@ -40,6 +40,15 @@ class QualityCheckStatus(models.TextChoices):
     REWORK = "rework", "Rework"
 
 
+class QualityCheckCheckpoint(models.TextChoices):
+    """Which QC stage recorded a QualityCheck. A garment keeps its sewing_line
+    forever, so both sewing- and finishing-QC records hang off the same garment;
+    this field is what distinguishes them (there is no other discriminator)."""
+
+    SEWING_QC = "sewing_qc", "Sewing QC"
+    FINISHING_QC = "finishing_qc", "Finishing QC"
+
+
 class ScanEventType(models.TextChoices):
     BUNDLE_ISSUED_TO_SEWING = "bundle_issued_to_sewing", "Bundle Issued to Sewing"
     BUNDLE_COMPLETED = "bundle_completed", "Bundle Completed"

@@ -4,6 +4,7 @@ import { SewingQCScanForm } from "@/components/scanner/sewing-qc-scan-form";
 import { QCScanFeedback } from "@/components/scanner/qc-scan-feedback";
 import { SewingQCInfo } from "@/components/scanner/sewing-qc-info";
 import { SewingQCDailySummary } from "@/components/scanner/sewing-qc-daily-summary";
+import { SewingQCTargetVsActual } from "@/components/scanner/sewing-qc-target-vs-actual";
 import { useSewingQCScanner } from "./use-sewing-qc-scanner";
 
 export default function SewingQCScannerPage() {
@@ -47,9 +48,11 @@ export default function SewingQCScannerPage() {
       </div>
 
       {/* Zone 3 — Today's QC summary (output / rework / fail / DHU% + top
-          defects). Always visible for a valid sewing-QC user. */}
+          defects) on top, then the hourly Target vs Actual (QC-pass output per
+          hour) below. Always visible for a valid sewing-QC user. */}
       <div className="space-y-4">
         <SewingQCDailySummary />
+        <SewingQCTargetVsActual />
       </div>
     </div>
   );
