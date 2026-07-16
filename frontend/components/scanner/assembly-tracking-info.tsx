@@ -6,7 +6,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { History, Package, Shirt, Clock } from "lucide-react";
+import { History, Package, Shirt, Clock, RefreshCw, Copy } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { schemas } from "@/types/api/client";
 import { z } from "zod";
@@ -21,6 +23,10 @@ interface AssemblyTrackingInfoProps {
   garmentIssueData?: AssemblyTrackingIssueInfoResponse;
   isLoadingAssemblyInfo: boolean;
   isLoadingGarmentInfo: boolean;
+  /** Manually refetch both history queries — safety net in case live
+      invalidation is ever delayed. */
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 /* Consistent colour per part name for the badges */
@@ -44,7 +50,14 @@ export function AssemblyTrackingInfo({
   garmentIssueData,
   isLoadingAssemblyInfo,
   isLoadingGarmentInfo,
+  onRefresh,
+  isRefreshing,
 }: AssemblyTrackingInfoProps) {
+  const copyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast.success("Copied " + code);
+  };
+
   const formatTime = (dateString: string) =>
     new Date(dateString).toLocaleTimeString("en-US", {
       hour: "2-digit",
@@ -108,23 +121,8 @@ export function AssemblyTrackingInfo({
     return m;
   }, [recentScans]);
 
-  // Most-recently-scanned order = the active order/style.
-  const activeOrderId = React.useMemo(() => {
-    let active: number | null = null;
-    let latest = -Infinity;
-    for (const s of recentScans) {
-      const oid = s?.bundle?.order?.id;
-      if (oid == null) continue;
-      const t = new Date(s?.created_at || 0).getTime();
-      if (t > latest) {
-        latest = t;
-        active = oid;
-      }
-    }
-    return active;
-  }, [recentScans]);
-
-  // Latest scan time per order — used to sort groups by recency.
+  // Latest scan time per order — used to sort groups by recency and to resolve
+  // the active order below.
   const latestTimeByOrder = React.useMemo(() => {
     const m = new Map<number, number>();
     for (const s of recentScans) {
@@ -135,6 +133,29 @@ export function AssemblyTrackingInfo({
     }
     return m;
   }, [recentScans]);
+
+  // Most-recently-scanned order that is ALSO still present in the rendered list.
+  // Orders hidden/completed are dropped server-side from inventory_items (and so
+  // from `groups`), so picking the latest scan across ALL recentScans could point
+  // at an order rendered nowhere — leaving no card with the Active badge even
+  // though a visible active order clearly exists. Restrict the pick to orders
+  // present in inventoryItems (= the orderIds that make up `groups`).
+  const activeOrderId = React.useMemo(() => {
+    const presentOrderIds = new Set<number>();
+    for (const it of inventoryItems) {
+      if (it?.order_id != null) presentOrderIds.add(it.order_id);
+    }
+    let active: number | null = null;
+    let latest = -Infinity;
+    for (const [oid, t] of latestTimeByOrder) {
+      if (!presentOrderIds.has(oid)) continue;
+      if (t > latest) {
+        latest = t;
+        active = oid;
+      }
+    }
+    return active;
+  }, [inventoryItems, latestTimeByOrder]);
 
   // Group inventory items by order/style, then sort groups so the active
   // (most recently scanned) order is always on top.
@@ -302,6 +323,15 @@ export function AssemblyTrackingInfo({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-bold">{group.order_number}</span>
+            <button
+              type="button"
+              onClick={() => copyCode(group.order_number)}
+              aria-label={`Copy ${group.order_number}`}
+              title="Copy order number"
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
             {active && (
               <Badge className="h-5 gap-1 bg-emerald-500 px-1.5 text-[10px] text-white hover:bg-emerald-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-white" />
@@ -333,8 +363,24 @@ export function AssemblyTrackingInfo({
         <CardTitle className="text-base flex items-center gap-2">
           <History className="h-4 w-4" />
           Assembly Tracking History
+          {onRefresh && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 ml-auto"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              aria-label="Refresh history"
+              title="Refresh history"
+            >
+              <RefreshCw
+                className={cn("h-4 w-4", isRefreshing && "animate-spin")}
+              />
+            </Button>
+          )}
           {(assemblyPartReceiveData as any)?.scanner_info && (
-            <Badge variant="outline" className="ml-auto">
+            <Badge variant="outline" className={cn(onRefresh ? "" : "ml-auto")}>
               {(assemblyPartReceiveData as any).scanner_info.scanner_name}
             </Badge>
           )}

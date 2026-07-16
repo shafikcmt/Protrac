@@ -175,6 +175,14 @@ def get_part_receive_info(
         .order_by("-created_at")
     )
 
+    # Drop scans belonging to inactive styles (superseded / completed / expired)
+    # so the history list only reflects currently active styles on this line.
+    from tracking.services.line_visibility import get_inactive_order_ids_for_line
+
+    inactive_order_ids = get_inactive_order_ids_for_line(scanner.production_line)
+    if inactive_order_ids:
+        scan_queryset = scan_queryset.exclude(bundle__order_id__in=inactive_order_ids)
+
     # Filter by order if specified
     if order_id:
         scan_queryset = scan_queryset.filter(bundle__order_id=order_id)
@@ -260,13 +268,13 @@ def _get_current_inventory_info(
         .order_by("order__id", "part__name")
     )
 
-    # Hide styles that are hidden in the Daily Production Report on this line —
-    # manual completions and auto-completed (fully output) styles — via the
-    # shared line-visibility source of truth.
-    from tracking.services.line_visibility import get_hidden_order_ids_for_line
+    # Show only currently ACTIVE styles on this line. Inactive = hidden (manual /
+    # fully-output) ∪ superseded by a newer style on the line ∪ delivery expired,
+    # via the shared line-visibility source of truth for secondary scan surfaces.
+    from tracking.services.line_visibility import get_inactive_order_ids_for_line
 
-    hidden_order_ids = get_hidden_order_ids_for_line(scanner.production_line)
-    inventory_queryset = inventory_queryset.exclude(order_id__in=hidden_order_ids)
+    inactive_order_ids = get_inactive_order_ids_for_line(scanner.production_line)
+    inventory_queryset = inventory_queryset.exclude(order_id__in=inactive_order_ids)
 
     # Filter by order if specified
     if order_id:

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarDays, Factory } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { apiHooks } from "@/lib/api";
 import {
   SerialHeatmapGrid,
@@ -50,7 +51,24 @@ const ASSEMBLY_STATUS_CONFIG: SerialStatusConfig = {
 const ASSEMBLY_LEGEND_ORDER = ["issued_for_assembly", "pending_assembly"];
 
 export function AssemblyDailySummary() {
-  const date = React.useMemo(() => getDhakaToday(), []);
+  // Re-derive the Dhaka date on an interval so a long-open kiosk tab rolls over
+  // to the next day automatically at midnight — no manual page reload needed.
+  // Only bump state when the day actually changes to avoid needless re-renders.
+  const [date, setDate] = React.useState(getDhakaToday);
+
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      setDate((prev) => {
+        const now = getDhakaToday();
+        return now === prev ? prev : now;
+      });
+    }, 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Which order-group (size) pill is selected. Index 0 = most-recently-active,
+  // shown by default; clamped at render time in case the group list shrinks.
+  const [selectedGroupIdx, setSelectedGroupIdx] = React.useState(0);
 
   const { data, isLoading, error } = apiHooks.useGet(
     "/api/tracking/assembly/daily-summary/",
@@ -106,8 +124,27 @@ export function AssemblyDailySummary() {
     total_assemble,
     active_order,
     garments_grid = [],
+    order_groups = [],
     hourly = [],
   } = data;
+
+  // One serial grid per order (size) active today, most-recent first. During
+  // rollout an older backend might not send order_groups yet, so fall back to the
+  // legacy flat active_order + garments_grid as a single synthetic group.
+  const groups =
+    order_groups.length > 0
+      ? order_groups
+      : active_order
+        ? [
+            {
+              order_number: active_order.order_number,
+              style: active_order.style,
+              size: "",
+              last_activity_at: "",
+              garments_grid,
+            },
+          ]
+        : [];
 
   // A LineTarget for today yields a full hour grid (H1..Hn) even before any scans;
   // the table renders whenever those rows exist. Only a line with no LineTarget at
@@ -182,17 +219,77 @@ export function AssemblyDailySummary() {
           )}
         </div>
 
-        {/* Today's serial worklist — pending + issued-today for the active order,
-            ascending serial, coloured by status (grey = pending, blue = issued
-            today). Same square visual language as the sewing-QC grid + kiosk
-            heatmap; bounded height + internal scroll so a long list never expands
-            the page / distorts the 3-column grid. */}
-        <SerialHeatmapGrid
-          cells={garments_grid}
-          statusConfig={ASSEMBLY_STATUS_CONFIG}
-          legendOrder={ASSEMBLY_LEGEND_ORDER}
-          emptyMessage="No garments for this order today."
-        />
+        {/* Today's serial worklist — one grid per order (size) active today. The
+            same style can have several sizes (each a distinct Order) assembling
+            the same day. Rather than stacking every grid (tall card), a compact
+            pill switcher lets the operator flip between sizes; only the selected
+            size's grid renders, so the card height stays consistent no matter how
+            many sizes are active. Groups arrive recency-sorted, so pill 0 (the
+            most-recently-active size) is selected by default. */}
+        {groups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No garments for this order today.
+          </p>
+        ) : (
+          (() => {
+            // In this branch groups is non-empty; index access is still typed as
+            // possibly-undefined under noUncheckedIndexedAccess, so assert groups[0].
+            const selected = groups[selectedGroupIdx] ?? groups[0]!;
+            return (
+              <div className="space-y-2">
+                {/* Pill switcher — only when 2+ sizes are active today. */}
+                {groups.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {groups.map((group, i) => {
+                      const issued = group.garments_grid.filter(
+                        (c) => c.status === "issued_for_assembly"
+                      ).length;
+                      const total = group.garments_grid.length;
+                      const isSelected = i === selectedGroupIdx;
+                      return (
+                        <button
+                          key={`${group.order_number}-${group.size}-${i}`}
+                          type="button"
+                          onClick={() => setSelectedGroupIdx(i)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                            isSelected
+                              ? "bg-emerald-500 text-white ring-1 ring-emerald-500/30"
+                              : "border-[0.5px] border-border bg-muted/30 text-muted-foreground hover:bg-muted/40"
+                          )}
+                        >
+                          {isSelected && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                          )}
+                          <span className="max-w-[140px] truncate">
+                            {group.style}
+                            {group.size ? ` • ${group.size}` : ""}
+                          </span>
+                          <span
+                            className={cn(
+                              "tabular-nums",
+                              isSelected ? "text-white/90" : "text-foreground/70"
+                            )}
+                          >
+                            {issued}/{total}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Only the selected group's grid — one at a time keeps the card
+                    compact with no nested/runaway scrolling. */}
+                <SerialHeatmapGrid
+                  cells={selected.garments_grid}
+                  statusConfig={ASSEMBLY_STATUS_CONFIG}
+                  legendOrder={ASSEMBLY_LEGEND_ORDER}
+                  emptyMessage="No garments for this order today."
+                />
+              </div>
+            );
+          })()
+        )}
       </CardContent>
       </Card>
 

@@ -271,7 +271,7 @@ export function SewingQCDailySummary() {
                     const isSelected = i === selectedGroupIdx;
                     return (
                       <button
-                        key={`${group.order_number}-${group.size}`}
+                        key={`${group.order_number}-${group.size}-${i}`}
                         type="button"
                         onClick={() => setSelectedGroupIdx(i)}
                         className={cn(

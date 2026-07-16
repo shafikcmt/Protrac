@@ -515,33 +515,10 @@ def _calculate_loading_from_bundles(bundles) -> int:
     return int(total_garments)
 
 
-def _calculate_total_input_upto(
-    production_line: ProductionLine,
-    target_date: date,
-    order_id: Optional[int] = None,
-    style_id: Optional[int] = None,
-    buyer_id: Optional[int] = None,
-    size: Optional[str] = None,
-    color: Optional[str] = None,
-    active_only: bool = True,
-) -> int:
-    """
-    Total Input (Pending + New) as of selected date end:
-      - Bundles in (CREATED, ISSUED_TO_SEWING) upto day_end
-      - Convert parts -> garments (min across required parts)
-    """
-    _day_start, day_end = day_range(target_date)
-    bundles = _get_pending_input_bundles_upto_queryset(
-        production_line,
-        day_end,
-        order_id=order_id,
-        style_id=style_id,
-        buyer_id=buyer_id,
-        size=size,
-        color=color,
-        active_only=active_only,
-    )
-    return _calculate_loading_from_bundles(bundles)
+# NOTE: Total Input is no longer derived here. The V3 dashboard reads it (and
+# Total Output / assembly) straight from the Daily Production Report rows in
+# get_sewing_dashboard_v2_data() so the two surfaces can never diverge. The old
+# per-line bundle-loading / garment-count helpers were removed with that change.
 
 
 # ----------------------------
@@ -571,93 +548,6 @@ def _garment_line_q(production_line: ProductionLine) -> Q:
     """
     line_field, _ = _bundle_line_and_issued_fields()
     return Q(sewing_line=production_line) | Q(**{f"primary_bundle__{line_field}": production_line})
-
-
-# ----------------------------
-# Sewing / finishing done upto
-# ----------------------------
-
-def _get_sewing_done_upto(
-    production_line,
-    day_end,
-    order_id=None,
-    style_id=None,
-    buyer_id=None,
-    size=None,
-    color=None,
-    active_only: bool = True,
-) -> int:
-    sewing_pass_statuses = [
-        GarmentStatus.SEWING_QC_PASS,
-        GarmentStatus.FINISHING_QC_PASS,
-        GarmentStatus.FINISHING_QC_FAIL,
-        GarmentStatus.FINISHING_QC_REWORK,
-    ]
-    qs = Garment.objects.filter(sewing_line=production_line, status__in=sewing_pass_statuses)
-
-    qs = _apply_active_only_by_delivery(qs, "primary_bundle__order__delivery_date", active_only)
-    qs = _exclude_completed_orders(qs, "primary_bundle__order_id", production_line, active_only)
-
-    if order_id:
-        qs = qs.filter(primary_bundle__order_id=order_id)
-    if style_id:
-        qs = qs.filter(primary_bundle__order__style_id=style_id)
-    if buyer_id:
-        qs = qs.filter(primary_bundle__order__style__buyer_id=buyer_id)
-    if size:
-        qs = qs.filter(primary_bundle__order__size__name=size)
-    if color:
-        qs = qs.filter(primary_bundle__order__color__name=color)
-
-    q = _garment_upto_day_end_q(
-        ["sewing_qc_at", "sewing_qc_completed_at", "updated_at", "modified_at", "created_at"],
-        day_end,
-    )
-    if q is not None:
-        qs = qs.filter(q)
-
-    return qs.count()
-
-
-
-
-def _count_garments_upto(
-    production_line: ProductionLine,
-    day_end,
-    statuses: Optional[List[str]] = None,
-    order_id: Optional[int] = None,
-    style_id: Optional[int] = None,
-    buyer_id: Optional[int] = None,
-    size: Optional[str] = None,
-    color: Optional[str] = None,
-    active_only: bool = True,
-) -> int:
-    qs = Garment.objects.filter(_garment_line_q(production_line))
-    qs = _apply_active_only_by_delivery(qs, "primary_bundle__order__delivery_date", active_only)
-    qs = _exclude_completed_orders(qs, "primary_bundle__order_id", production_line, active_only)
-
-    if statuses:
-        qs = qs.filter(status__in=statuses)
-
-    q = _garment_upto_day_end_q(
-        ["created_at", "updated_at", "modified_at", "sewing_qc_at", "sewing_qc_completed_at", "finishing_qc_at"],
-        day_end,
-    )
-    if q is not None:
-        qs = qs.filter(q)
-
-    if order_id:
-        qs = qs.filter(Q(order_id=order_id) | Q(primary_bundle__order_id=order_id))
-    if style_id:
-        qs = qs.filter(Q(order__style_id=style_id) | Q(primary_bundle__order__style_id=style_id))
-    if buyer_id:
-        qs = qs.filter(Q(order__style__buyer_id=buyer_id) | Q(primary_bundle__order__style__buyer_id=buyer_id))
-    if size:
-        qs = qs.filter(Q(order__size__name=size) | Q(primary_bundle__order__size__name=size))
-    if color:
-        qs = qs.filter(Q(order__color__name=color) | Q(primary_bundle__order__color__name=color))
-
-    return qs.distinct().count()
 
 
 def _get_sewing_qc_garment_statuses() -> List[str]:
@@ -1386,31 +1276,33 @@ def _get_assemble_hourly_totals(
     production_line: ProductionLine,
     target_date: date,
     line_target: Optional[LineTarget],
-    order_id: Optional[int] = None,
-    style_id: Optional[int] = None,
-    buyer_id: Optional[int] = None,
-    size: Optional[str] = None,
-    color: Optional[str] = None,
+    active_order_ids: Optional[List[int]] = None,
     active_only: bool = True,
     start_local: Optional[datetime] = None,
 ) -> List[int]:
+    """Hourly "issued for assembly" counts.
+
+    Uses the SAME source as the Daily Production Report — ``Garment.sewing_line``
+    plus the ``issued_for_assembly_at`` timestamp (the assembly-scan source of
+    truth) — and is scoped to the line's ACTIVE-style orders so the hourly
+    assembly row lines up with Total Input / Output and the DPR. Older/finished
+    or superseded styles are excluded (their order ids are simply absent from
+    ``active_order_ids``), which was the previous over-count on multi-style lines.
+    """
     work_hours = int(getattr(line_target, "work_hours", 0) or 0) or 8
     hour_count = max(1, work_hours)
 
-    TrackingScan = _resolve_tracking_scan_model()
-    if TrackingScan is None:
+    # No active style on this line -> nothing to show.
+    if not active_order_ids:
         return [0] * hour_count
 
-    event_types = ["garment_issued_for_assembly", "GARMENT_ISSUED_FOR_ASSEMBLY"]
+    day_start, day_end = day_range(target_date)
 
-    qs = TrackingScan.objects.filter(
-        event_type__in=event_types,
-        created_at__date=target_date,
+    qs = Garment.objects.filter(
+        sewing_line=production_line,
+        order_id__in=active_order_ids,
+        issued_for_assembly_at__range=(day_start, day_end),
     )
-    # Filter by scanner.production_line — assembly scans set garment (not bundle),
-    # so bundle__line is always NULL and must not be used here.
-    qs = qs.filter(scanner__production_line=production_line)
-    qs = _exclude_completed_orders(qs, "garment__order_id", production_line, active_only)
 
     if not qs.exists():
         return [0] * hour_count
@@ -1421,8 +1313,8 @@ def _get_assemble_hourly_totals(
 
     totals = [0] * hour_count
 
-    for s in qs.iterator(chunk_size=2000):
-        ts = getattr(s, "created_at", None)
+    for g in qs.iterator(chunk_size=2000):
+        ts = getattr(g, "issued_for_assembly_at", None)
         if not ts:
             continue
 
@@ -1788,6 +1680,40 @@ def get_sewing_dashboard_v2_data(
 
     data: List[Dict[str, Any]] = []
 
+    # ── Single source of truth for Total Input / active style ────────────
+    # V3's WIP "Total Input" must match the Daily Production Report 1:1. We no
+    # longer re-derive input here (which diverged on multi-style lines). Instead
+    # we pull the DPR rows once and read the ACTIVE-style figures straight from
+    # them. Pending OLD styles (DPR's "pending transition" rows) are kept OUT of
+    # the main number and surfaced separately as a badge.
+    from tracking.services.report import get_daily_production_report_data
+    from tracking.services.line_visibility import get_active_style_id_for_line
+
+    _dpr_report_date = date_to or date
+    _dpr_sizes = sizes if sizes else ([size] if size else None)
+    _dpr_colors = colors if colors else ([color] if color else None)
+    try:
+        _dpr_lines = get_daily_production_report_data(
+            report_date=_dpr_report_date,
+            production_line_id=production_line_id,
+            production_line_ids=production_line_ids,
+            buyer_id=buyer_id,
+            buyer_ids=buyer_ids,
+            style_id=style_id,
+            style_ids=style_ids,
+            order_id=order_id,
+            order_ids=order_ids,
+            sizes=_dpr_sizes,
+            colors=_dpr_colors,
+        )
+    except Exception:
+        _dpr_lines = []
+    _dpr_orders_by_line: Dict[int, List[Dict[str, Any]]] = {
+        int(l["production_line_id"]): (l.get("orders") or [])
+        for l in _dpr_lines
+        if l.get("production_line_id") is not None
+    }
+
     for line in qs:
         line_target = LineTarget.objects.filter(line=line, date=date).first()
 
@@ -1814,33 +1740,60 @@ def get_sewing_dashboard_v2_data(
         else:
             _day_start, day_end = day_range(date)
 
-        # Total input upto (bundle vs garment fallback)
-        bundle_input_upto = _calculate_total_input_upto(
-            line,
-            (date_to or date),
-            order_id=order_id,
-            style_id=style_id,
-            buyer_id=buyer_id,
-            size=size,
-            color=color,
-            active_only=active_only,
+        # ── Active-style Total Input / Output, read from the DPR rows (1:1) ──
+        # The DPR is the single source of truth. Active rows = the current style
+        # (and its sibling sizes/colors). Pending OLD styles are DPR's
+        # "pending transition" rows and must NOT be folded into Total Input.
+        _dpr_rows = _dpr_orders_by_line.get(int(line.id), [])
+        _active_rows = [
+            r for r in _dpr_rows
+            if not r.get("is_hidden") and not r.get("is_pending_transition")
+        ]
+        _pending_old_rows = [
+            r for r in _dpr_rows
+            if r.get("is_pending_transition") and not r.get("is_hidden")
+        ]
+
+        # Main number = active/current style only (matches the DPR row exactly).
+        total_input_upto = sum(int(r.get("input", 0) or 0) for r in _active_rows)
+        total_output_upto = sum(
+            int((r.get("output") or {}).get("cumulative", 0) or 0)
+            for r in _active_rows
+        )
+
+        active_style_name = next(
+            (r.get("style") for r in _active_rows if r.get("style")), None
+        )
+        active_style_id = get_active_style_id_for_line(
+            line, as_of_date=_dpr_report_date
+        )
+
+        # Old style still pending alongside the new active style -> badge only,
+        # never counted in total_input.
+        pending_old_style_count = len(
+            {r.get("style") for r in _pending_old_rows if r.get("style")}
+        )
+        pending_old_pending_qty = sum(
+            int(r.get("pending_quantity", 0) or 0) for r in _pending_old_rows
+        )
+
+        # Active-style order ids + assembly figures, straight from the same DPR
+        # rows. Assembly now shares the active-style scope used by Total Input.
+        _active_order_ids = [
+            int(r["order_id"]) for r in _active_rows if r.get("order_id") is not None
+        ]
+        assembly_input_day = sum(
+            int((r.get("assembly_input") or {}).get("day", 0) or 0)
+            for r in _active_rows
+        )
+        assembly_input_cumulative = sum(
+            int((r.get("assembly_input") or {}).get("cumulative", 0) or 0)
+            for r in _active_rows
         )
 
         pass_qty = _get_today_sewing_pass_qty(
-        line,
-        date,
-        order_id=order_id,
-        style_id=style_id,
-        buyer_id=buyer_id,
-        size=size,
-        color=color,
-        active_only=active_only,
-        )
-
-        garment_input_upto = _count_garments_upto(
             line,
-            day_end,
-            statuses=None,
+            date,
             order_id=order_id,
             style_id=style_id,
             buyer_id=buyer_id,
@@ -1849,24 +1802,7 @@ def get_sewing_dashboard_v2_data(
             active_only=active_only,
         )
 
-        total_input_upto = int(max(bundle_input_upto, garment_input_upto))
-
-        # Total output upto = sewing done - finishing done (shipment-ready)
-       # Total output upto = cumulative sewing pass upto selected date
-        sewing_qc_pass_upto = _get_sewing_done_upto(
-            line,
-            day_end,
-            order_id=order_id,
-            style_id=style_id,
-            buyer_id=buyer_id,
-            size=size,
-            color=color,
-            active_only=active_only,
-        )
-
-        total_output_upto = int(sewing_qc_pass_upto)
-
-        # WIP summary should use cumulative output, not current status-only output
+        # WIP uses the same active-style numbers so it can never drift.
         line_wip_calc = max(0, int(total_input_upto) - int(total_output_upto))
 
         part_inventory = _get_line_part_inventory_upto(
@@ -1908,16 +1844,12 @@ def get_sewing_dashboard_v2_data(
             line, date, line_target, order_id, style_id, buyer_id, size, color, active_only=active_only
         )
 
-        # Assemble hourly totals
+        # Assemble hourly totals (active-style orders only, DPR source)
         assemble_hourly_totals = _get_assemble_hourly_totals(
             production_line=line,
             target_date=date,
             line_target=line_target,
-            order_id=order_id,
-            style_id=style_id,
-            buyer_id=buyer_id,
-            size=size,
-            color=color,
+            active_order_ids=_active_order_ids,
             active_only=active_only,
         )
 
@@ -1967,10 +1899,22 @@ def get_sewing_dashboard_v2_data(
                 "production_line_id": line.id,
                 "production_line_name": line.name,
 
-                # WIP SUMMARY (Pending+New)
+                # WIP SUMMARY (active style only — matches DPR row 1:1)
                 "total_input": int(total_input_upto),
                 "total_output": int(total_output_upto),
                 "line_wip": int(line_wip_calc),
+
+                # Active style + pending-old-style badge (source of truth = DPR)
+                "active_style_id": (
+                    int(active_style_id) if active_style_id is not None else None
+                ),
+                "active_style_name": active_style_name,
+                "pending_old_style_count": int(pending_old_style_count),
+                "pending_old_pending_qty": int(pending_old_pending_qty),
+
+                # Assembly (active style only — matches DPR assembly_input)
+                "assembly_input_day": int(assembly_input_day),
+                "assembly_input_cumulative": int(assembly_input_cumulative),
 
                 # Backward compat
                 "todays_loading": int(total_input_upto),

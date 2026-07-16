@@ -1,4 +1,5 @@
 from rest_framework import generics
+from django.db.models.functions import Length
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.exceptions import ValidationError
@@ -157,8 +158,16 @@ class PartDetailView(BaseDetailView):
 
 
 class DefectListCreateView(BaseListCreateView):
-    queryset = Defect.objects.all()
     serializer_class = DefectSerializer
+    # Register scheme: A, B … Z, then Aa, Bb … — i.e. sort by code LENGTH first,
+    # then alphabetically. Model Meta.ordering (plain ["code", "name"]) can't
+    # express that, so annotate the code length and order on it here. Overriding
+    # `ordering` also stops the base OrderingFilter default ("created_at") from
+    # clobbering this sequence. Empty codes (length 0) sort first, per spec.
+    ordering = ["code_len", "code", "name"]
+
+    def get_queryset(self):
+        return Defect.objects.annotate(code_len=Length("code"))
 
 
 class DefectDetailView(BaseDetailView):

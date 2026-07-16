@@ -30,6 +30,8 @@ type WipData = {
   totalOutput: number;
   lineWip: number;
   partWipRows: { label: string; value: number; max: number }[];
+  pendingOldStyleCount?: number;
+  pendingOldPendingQty?: number;
 };
 
 const DEFAULT_PARTS = ["Front", "Back", "Sleeve", "Collar", "Hood"];
@@ -777,6 +779,21 @@ export default function SlideOne({
               WIP Summary
             </h2>
             <div className="flex items-center gap-1.5">
+              {(wip.pendingOldStyleCount ?? 0) > 0 && (
+                <span
+                  title="Old style still pending on this line (not counted in Total Input)"
+                  className="kiosk-header font-black uppercase rounded-full px-2 py-0.5"
+                  style={{
+                    fontSize: 9,
+                    letterSpacing: "0.12em",
+                    color: "#FBBF24",
+                    background: "rgba(245,158,11,0.14)",
+                    border: "1px solid rgba(245,158,11,0.35)",
+                  }}
+                >
+                  +{wip.pendingOldStyleCount} OLD · {(wip.pendingOldPendingQty ?? 0).toLocaleString()} PCS
+                </span>
+              )}
               <div
                 className="h-[7px] w-[7px] rounded-full bg-emerald-400"
                 style={{ animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite" }}

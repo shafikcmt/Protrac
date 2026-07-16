@@ -124,6 +124,7 @@ export default function DefectsPage() {
           open={formOpen}
           onOpenChange={setFormOpen}
           defect={selectedDefect}
+          existingDefects={defects}
           onSubmit={handleFormSubmit}
           isLoading={isCreating || isUpdating}
         />

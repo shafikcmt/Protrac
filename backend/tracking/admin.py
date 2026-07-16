@@ -26,7 +26,7 @@ from tracking.models import (
     Scan,
     MailRecipient,
 )
-from tracking.models.mail import RecipientType, ReportType
+from tracking.models.mail import RecipientType, ReportType, ReportScheduleConfig
 
 
 # --- CUSTOM ADMIN CLASSES ---
@@ -224,6 +224,34 @@ class MailRecipientAdmin(BaseModelAdmin):
         )
 
 
+class ReportScheduleConfigAdmin(BaseModelAdmin):
+    """
+    Singleton schedule config for automated report emails. Number fields and the
+    boolean toggle are auto-styled by Unfold's ModelAdmin (FORMFIELD_OVERRIDES),
+    like the rest of the admin — no explicit widgets needed here.
+    """
+
+    list_display = [
+        "report_type",
+        "send_hour",
+        "send_minute",
+        "is_enabled",
+        "updated_at",
+    ]
+
+    def has_add_permission(self, request):
+        # Singleton: block adding a second daily_production row once one exists.
+        if ReportScheduleConfig.objects.filter(
+            report_type=ReportType.DAILY_PRODUCTION
+        ).exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        # Never delete — the scheduler always needs a config to read.
+        return False
+
+
 # --- ADMIN REGISTRATION ---
 # Models with custom admin classes
 admin.site.register(Size, SizeAdmin)
@@ -235,6 +263,7 @@ admin.site.register(Bundle, BundleAdmin)
 admin.site.register(Garment, GarmentAdmin)
 admin.site.register(Scan, ScanAdmin)
 admin.site.register(MailRecipient, MailRecipientAdmin)
+admin.site.register(ReportScheduleConfig, ReportScheduleConfigAdmin)
 
 # Auto-register remaining models from tracking app with BaseModelAdmin
 # This will register all models that inherit from BaseModel and are not already registered
@@ -251,6 +280,7 @@ auto_register_models(
         "Garment",
         "Scan",
         "MailRecipient",
+        "ReportScheduleConfig",
     ],
     verbose=settings.DEBUG,
 )

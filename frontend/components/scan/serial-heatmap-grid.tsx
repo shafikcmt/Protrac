@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
+import { Copy } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 /** One garment cell in a serial-status grid. */
 export interface SerialCell {
@@ -25,7 +32,11 @@ export type SerialStatusConfig = Record<string, SerialStatusStyle>;
 
 /** One compact garment cell — small rounded square with its serial number,
     coloured by status. Shared visual language across the assembly-tracking and
-    sewing-QC daily summaries (originally the kiosk heatmap's GarmentBox). */
+    sewing-QC daily summaries (originally the kiosk heatmap's GarmentBox).
+
+    Hovering (desktop) or tapping (touch) the square opens an interactive popover
+    with the sequence number, status label, and tracking code + a copy button —
+    replacing the old non-interactive native `title` tooltip. */
 function SerialBox({
   cell,
   style,
@@ -33,16 +44,82 @@ function SerialBox({
   cell: SerialCell;
   style: SerialStatusStyle;
 }) {
+  const [open, setOpen] = React.useState(false);
+
+  // Delay closing on mouse-leave so the pointer can travel from the square into
+  // the popover to click Copy without it vanishing (the classic hover-gap). On
+  // touch there's no hover — tap toggles open and an outside tap/Escape closes it
+  // via Radix's onOpenChange, so it stays open until tapped elsewhere.
+  const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = React.useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+  const scheduleClose = React.useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 120);
+  }, [cancelClose]);
+  React.useEffect(() => cancelClose, [cancelClose]);
+
+  const copy = () => {
+    navigator.clipboard.writeText(cell.tracking_code);
+    toast.success("Copied " + cell.tracking_code);
+  };
+
   return (
-    <div
-      className={cn(
-        "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[10px] font-medium tabular-nums transition-transform hover:scale-110",
-        style.box
-      )}
-      title={`#${cell.sequence_number} · ${style.label} · ${cell.tracking_code}`}
-    >
-      {cell.sequence_number}
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onMouseEnter={() => {
+            cancelClose();
+            setOpen(true);
+          }}
+          onMouseLeave={scheduleClose}
+          className={cn(
+            "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[10px] font-medium tabular-nums transition-transform hover:scale-110",
+            style.box
+          )}
+        >
+          {cell.sequence_number}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="center"
+        className="w-auto p-2"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onMouseEnter={cancelClose}
+        onMouseLeave={scheduleClose}
+      >
+        <div className="space-y-1.5 text-xs">
+          <div className="font-semibold">
+            #{cell.sequence_number} · {style.label}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={copy}
+              title="Copy tracking code"
+              className="font-mono hover:underline"
+            >
+              {cell.tracking_code}
+            </button>
+            <button
+              type="button"
+              onClick={copy}
+              aria-label="Copy tracking code"
+              title="Copy tracking code"
+              className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -62,11 +139,17 @@ export function SerialHeatmapGrid({
   statusConfig,
   legendOrder,
   emptyMessage = "No garments to show.",
+  scrollable = true,
 }: {
   cells: SerialCell[];
   statusConfig: SerialStatusConfig;
   legendOrder?: string[];
   emptyMessage?: string;
+  /** When false, the grid renders at natural height with no internal scroll —
+      used when an outer container owns the scrolling (e.g. the multi-group
+      assembly summary), to avoid nested double-scrollbars. Defaults to true so
+      existing single-grid callers keep their bounded, internally-scrolling box. */
+  scrollable?: boolean;
 }) {
   const order = legendOrder ?? Object.keys(statusConfig);
 
@@ -111,8 +194,14 @@ export function SerialHeatmapGrid({
           );
         })}
       </div>
-      {/* Grid of serial squares (scrolls internally) */}
-      <div className="max-h-[340px] overflow-y-auto rounded-lg border bg-card/40 p-2">
+      {/* Grid of serial squares (scrolls internally unless an outer container
+          owns scrolling — see `scrollable`). */}
+      <div
+        className={cn(
+          "rounded-lg border bg-card/40 p-2",
+          scrollable && "max-h-[340px] overflow-y-auto"
+        )}
+      >
         <div className="flex flex-wrap gap-1">
           {cells.map((cell) => {
             const style = statusConfig[cell.status] ?? fallbackStyle;

@@ -436,6 +436,8 @@ export default function Page() {
   const wip: WipData = React.useMemo(() => {
     const totalInput = sumField("total_input") || sumField("todays_loading");
     const totalOutput = sumField("total_output") || totalPass;
+    const pendingOldStyleCount = sumField("pending_old_style_count");
+    const pendingOldPendingQty = sumField("pending_old_pending_qty");
 
     const lineWip =
       sumField("line_wip") ||
@@ -492,7 +494,7 @@ export default function Page() {
       .sort((a, b) => b.value - a.value)
       .slice(0, 8);
 
-    return { totalInput, totalOutput, lineWip, partWipRows };
+    return { totalInput, totalOutput, lineWip, partWipRows, pendingOldStyleCount, pendingOldPendingQty };
   }, [activeLines, sumField, totalPass]);
 
   const hourCount = workHours;
@@ -745,8 +747,15 @@ const cycleTheme = React.useCallback(() => {
                 <div className="kiosk-header font-bold text-white truncate text-[var(--fs-title)] drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
                   {current?.title ?? ""}
                 </div>
-                <div className="text-white/55 truncate text-[var(--fs-sub)] bg-white/10 border border-white/15 px-2.5 py-1 rounded-full w-fit">
-                  {activeLines.length ? `${activeLines.length} line(s)` : isLoading ? "Loading..." : "No data"}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-white/55 truncate text-[var(--fs-sub)] bg-white/10 border border-white/15 px-2.5 py-1 rounded-full w-fit">
+                    {activeLines.length ? `${activeLines.length} line(s)` : isLoading ? "Loading..." : "No data"}
+                  </div>
+                  {activeLines.length === 1 && (activeLines[0] as any)?.active_style_name ? (
+                    <div className="text-cyan-200/80 truncate text-[var(--fs-sub)] bg-cyan-500/10 border border-cyan-400/25 px-2.5 py-1 rounded-full w-fit">
+                      Style: {(activeLines[0] as any).active_style_name}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

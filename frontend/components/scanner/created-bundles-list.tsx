@@ -1,6 +1,5 @@
 "use client";
 
-import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -10,13 +9,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { PackageX, ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { PackageX } from "lucide-react";
+import { StyleSizeGroups } from "@/components/scanner/style-size-groups";
 import { schemas } from "@/types/api/client";
 import { z } from "zod";
 
@@ -24,6 +18,17 @@ type Bundle = z.infer<typeof schemas.Bundle>;
 type PaginatedBundleList = z.infer<typeof schemas.PaginatedBundleList>;
 
 export type CreatedBundlesView = "list" | "grouped";
+
+/** Group table columns (Style + Size live in the group header, so omitted). */
+const GROUP_COLUMNS = [
+  "Tracking Code",
+  "Order",
+  "Color",
+  "Part",
+  "Bundle #",
+  "Qty",
+  "Created",
+];
 
 interface CreatedBundlesListProps {
   data?: PaginatedBundleList;
@@ -142,7 +147,8 @@ function FlatView({
   );
 }
 
-/* ── Grouped-by-Style·Size view ── */
+/* ── Grouped-by-Style·Size view (shares the collapsible group shell with the
+      Recent Issues grouped view via StyleSizeGroups). ── */
 function GroupedView({
   bundles,
   onSelect,
@@ -150,89 +156,40 @@ function GroupedView({
   bundles: Bundle[];
   onSelect: (trackingCode: string) => void;
 }) {
-  // Group by Style · Size, preserving first-seen order (data is -created_at).
-  const groups = React.useMemo(() => {
-    const map = new Map<string, { style: string; size: string; items: Bundle[] }>();
-    for (const b of bundles) {
-      const key = `${b.style_name} · ${b.size_name}`;
-      const g = map.get(key);
-      if (g) g.items.push(b);
-      else map.set(key, { style: b.style_name, size: b.size_name, items: [b] });
-    }
-    return Array.from(map, ([key, value]) => ({ key, ...value }));
-  }, [bundles]);
-
-  // Default expanded when few groups; auto-collapsed when many.
-  const defaultOpen = groups.length <= AUTO_COLLAPSE_THRESHOLD;
-  const [openKeys, setOpenKeys] = React.useState<Set<string>>(
-    () => new Set(defaultOpen ? groups.map((g) => g.key) : [])
-  );
-
-  const toggle = (key: string) =>
-    setOpenKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-
   return (
-    <div className="space-y-2">
-      {groups.map((group) => {
-        const isOpen = openKeys.has(group.key);
-        return (
-          <Collapsible
-            key={group.key}
-            open={isOpen}
-            onOpenChange={() => toggle(group.key)}
-            className="rounded-lg border bg-card/40"
-          >
-            <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-accent/40 rounded-lg">
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                  !isOpen && "-rotate-90"
-                )}
-              />
-              <span className="text-sm font-semibold">{group.style}</span>
-              <span className="text-xs text-muted-foreground">· {group.size}</span>
-              <Badge variant="secondary" className="ml-auto text-xs">
-                {group.items.length}
-              </Badge>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tracking Code</TableHead>
-                    <TableHead>Order</TableHead>
-                    <TableHead>Color</TableHead>
-                    <TableHead>Part</TableHead>
-                    <TableHead>Bundle #</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead>Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {group.items.map((bundle) => (
-                    <BundleRow key={bundle.id} bundle={bundle} onSelect={onSelect}>
-                      <TableCell className="text-sm font-medium">
-                        {bundle.order_number}
-                      </TableCell>
-                      <TableCell className="text-sm">{bundle.color_name}</TableCell>
-                      <TableCell className="text-sm">
-                        {bundle.part_name || "—"}
-                      </TableCell>
-                      <BundleTailCells bundle={bundle} />
-                    </BundleRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CollapsibleContent>
-          </Collapsible>
-        );
-      })}
-    </div>
+    <StyleSizeGroups
+      items={bundles}
+      renderItems={(items) => (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {GROUP_COLUMNS.map((col) => (
+                <TableHead
+                  key={col}
+                  className={col === "Qty" ? "text-right" : undefined}
+                >
+                  {col}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((bundle) => (
+              <BundleRow key={bundle.id} bundle={bundle} onSelect={onSelect}>
+                <TableCell className="text-sm font-medium">
+                  {bundle.order_number}
+                </TableCell>
+                <TableCell className="text-sm">{bundle.color_name}</TableCell>
+                <TableCell className="text-sm">
+                  {bundle.part_name || "—"}
+                </TableCell>
+                <BundleTailCells bundle={bundle} />
+              </BundleRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    />
   );
 }
 

@@ -20,6 +20,7 @@ from tracking.tests.conftest import (
     PartFactory,
     OrderFactory,
     StyleFactory,
+    SizeFactory,
 )
 
 DHAKA = ZoneInfo("Asia/Dhaka")
@@ -218,23 +219,157 @@ class TestAssemblyDailySummaryHourly:
         assert by_seq[1] == "pending_assembly"
         assert by_seq[2] == "issued_for_assembly"
 
-    def test_no_line_target_returns_empty_hourly(self, setup):
-        """With no daily target configured for the line/date, the hourly block is
-        empty so the UI can show a 'no daily target' fallback (mirrors sewing v3).
-        Must not crash even though scans exist."""
-        # A scan today, but no LineTarget for the line.
+    def test_no_line_target_returns_default_8hr_hourly(self, setup):
+        """With no daily target configured, the hourly block defaults to 8 hours
+        (H1..H8) with a per-hour target of 0, and actuals are still filled from
+        real scan data (bucketed by the shared shift anchor)."""
+        # A bundle received at 08:30 (H1) and a garment issued at 08:40 (H1), but
+        # no LineTarget for the line.
         self._scan_at(
             setup["scanner"], time(8, 30),
             event=ScanEventType.BUNDLE_COMPLETED,
             bundle=self._bundle(setup["order"], setup["part"], setup["line"]),
         )
+        self._scan_at(
+            setup["scanner"], time(8, 40),
+            event=ScanEventType.GARMENT_ISSUED_FOR_ASSEMBLY,
+            garment=GarmentFactory(order=setup["order"], sequence_number=9002),
+        )
 
         result = get_assembly_daily_summary(setup["user"])
+        hourly = result["hourly"]
 
-        assert result["hourly"] == []
+        # Default 8-hour grid, every target 0.
+        assert len(hourly) == 8
+        assert [r["hour"] for r in hourly] == list(range(1, 9))
+        assert all(r["target"] == 0 for r in hourly)
+
+        # Actuals filled from real scans — both land in H1.
+        assert hourly[0]["bundles_received"] == 1
+        assert hourly[0]["assembly_complete"] == 1
+        assert sum(r["bundles_received"] for r in hourly) == 1
+        assert sum(r["assembly_complete"] for r in hourly) == 1
 
     def test_user_without_scanner_raises(self):
         """No assigned scanner -> ValueError (the shared user->line guard)."""
         user = UserFactory()
         with pytest.raises(ValueError):
             get_assembly_daily_summary(user)
+
+
+@pytest.mark.django_db
+class TestAssemblyDailySummaryOrderGroups:
+    """`order_groups`: every order active TODAY (size-wise) gets its own serial
+    grid, most recently active on top."""
+
+    @pytest.fixture
+    def setup(self):
+        sewing_line = ProductionLineFactory(line_type=LineType.SEWING)
+        scanner = Scanner.objects.create(
+            name="Asm Scanner",
+            scanner_type=ScannerType.ASSEMBLY_TRACKING,
+            production_line=sewing_line,
+        )
+        user = UserFactory(assigned_scanner=scanner)
+        style = StyleFactory()
+        return {
+            "line": sewing_line,
+            "scanner": scanner,
+            "user": user,
+            "style": style,
+        }
+
+    def _issue_scan_at(self, scanner, local_time, garment):
+        """Create a GARMENT_ISSUED_FOR_ASSEMBLY scan pinned to a local Dhaka time
+        today (created_at has auto_now_add, so overwrite it explicitly)."""
+        aware = datetime.combine(timezone.localdate(), local_time, tzinfo=DHAKA)
+        scan = Scan.objects.create(
+            scanner=scanner,
+            event_type=ScanEventType.GARMENT_ISSUED_FOR_ASSEMBLY,
+            garment=garment,
+        )
+        Scan.objects.filter(pk=scan.pk).update(created_at=aware)
+        return scan
+
+    def test_multiple_sizes_same_style_all_appear_sorted_by_recency(self, setup):
+        """Two sizes of the same style scanned today -> two order_groups, the more
+        recently active order on top, each carrying its own size + grid."""
+        style = setup["style"]
+        scanner = setup["scanner"]
+        now_today = datetime.combine(timezone.localdate(), time(9, 0), tzinfo=DHAKA)
+
+        order_s = OrderFactory(style=style, size=SizeFactory(name="S"))
+        order_l = OrderFactory(style=style, size=SizeFactory(name="L"))
+
+        # Size S issued earlier, size L later -> L is the most recently active.
+        g_s = GarmentFactory(
+            order=order_s, sequence_number=1, issued_for_assembly_at=now_today
+        )
+        g_l = GarmentFactory(
+            order=order_l, sequence_number=1, issued_for_assembly_at=now_today
+        )
+        self._issue_scan_at(scanner, time(8, 30), g_s)
+        self._issue_scan_at(scanner, time(9, 30), g_l)
+
+        result = get_assembly_daily_summary(setup["user"])
+        groups = result["order_groups"]
+
+        assert len(groups) == 2
+        # Most recently active (size L) first.
+        assert groups[0]["size"] == "L"
+        assert groups[1]["size"] == "S"
+        assert groups[0]["style"] == style.name
+        assert groups[0]["order_number"] == order_l.order_number
+        # Each group carries its own grid (its own single issued garment here).
+        assert [c["sequence_number"] for c in groups[0]["garments_grid"]] == [1]
+        assert [c["sequence_number"] for c in groups[1]["garments_grid"]] == [1]
+        # Backward-compat: active_order + flat grid mirror the top group.
+        assert result["active_order"]["order_number"] == order_l.order_number
+        assert result["garments_grid"] == groups[0]["garments_grid"]
+
+    def test_order_with_no_activity_today_absent(self, setup):
+        """An order with garments but no issue/receive scan today never appears."""
+        style = setup["style"]
+        scanner = setup["scanner"]
+        now_today = datetime.combine(timezone.localdate(), time(9, 0), tzinfo=DHAKA)
+
+        active = OrderFactory(style=style, size=SizeFactory(name="M"))
+        idle = OrderFactory(style=style, size=SizeFactory(name="XL"))
+        # `idle` has a pending garment but no scan today.
+        GarmentFactory(order=idle, sequence_number=1, issued_for_assembly_at=None)
+
+        g = GarmentFactory(
+            order=active, sequence_number=1, issued_for_assembly_at=now_today
+        )
+        self._issue_scan_at(scanner, time(9, 0), g)
+
+        result = get_assembly_daily_summary(setup["user"])
+        numbers = [grp["order_number"] for grp in result["order_groups"]]
+
+        assert active.order_number in numbers
+        assert idle.order_number not in numbers
+        assert len(result["order_groups"]) == 1
+
+    def test_hidden_order_excluded_from_order_groups(self, setup):
+        """A manually-completed (hidden) order is dropped from order_groups too."""
+        style = setup["style"]
+        scanner = setup["scanner"]
+        now_today = datetime.combine(timezone.localdate(), time(9, 0), tzinfo=DHAKA)
+
+        order = OrderFactory(style=style, size=SizeFactory(name="S"))
+        g = GarmentFactory(
+            order=order, sequence_number=1, issued_for_assembly_at=now_today
+        )
+        self._issue_scan_at(scanner, time(9, 0), g)
+
+        before = get_assembly_daily_summary(setup["user"])
+        assert len(before["order_groups"]) == 1
+
+        LineStyleCompletion.objects.create(
+            production_line=setup["line"], order=order
+        )
+
+        after = get_assembly_daily_summary(setup["user"])
+        assert after["order_groups"] == []
+        assert after["active_order"] is None
+        assert after["garments_grid"] == []

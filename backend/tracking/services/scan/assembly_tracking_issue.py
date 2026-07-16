@@ -134,6 +134,14 @@ def get_assembly_tracking_issue_info(
         event_type=ScanEventType.GARMENT_ISSUED_FOR_ASSEMBLY,
     )
 
+    # Drop scans belonging to inactive styles (superseded / completed / expired)
+    # so the history only reflects currently active styles on this line.
+    from tracking.services.line_visibility import get_inactive_order_ids_for_line
+
+    inactive_order_ids = get_inactive_order_ids_for_line(scanner.production_line)
+    if inactive_order_ids:
+        queryset = queryset.exclude(garment__order_id__in=inactive_order_ids)
+
     # Apply filters
     if order_id:
         queryset = queryset.filter(garment__order_id=order_id)

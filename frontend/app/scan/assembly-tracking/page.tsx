@@ -13,7 +13,9 @@ export default function AssemblyTrackingScannerPage() {
     garmentIssueInfo,
     isLoadingAssemblyInfo,
     isLoadingGarmentInfo,
-    
+    refetchHistory,
+    isRefreshingHistory,
+
     // Mutation
     submitScan,
     isScanning,
@@ -51,6 +53,8 @@ export default function AssemblyTrackingScannerPage() {
           garmentIssueData={garmentIssueInfo}
           isLoadingAssemblyInfo={isLoadingAssemblyInfo}
           isLoadingGarmentInfo={isLoadingGarmentInfo}
+          onRefresh={refetchHistory}
+          isRefreshing={isRefreshingHistory}
         />
       </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   MoreHorizontal,
   CheckCircle2,
@@ -25,6 +25,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -85,6 +87,70 @@ export function ProductionReportTable({
   const undoComplete = useUndoStyleComplete();
   const isCompleting = markComplete.isPending;
   const isUnhiding = undoComplete.isPending;
+
+  // ── Shrink-to-fit font sizing ──
+  // Render the 30-column table as large as it can be while still fitting the
+  // container width — never a horizontal scrollbar, never fewer columns. At the
+  // 1280px floor this lands on ~11px (unchanged); on wider screens it scales up
+  // toward the ceiling. Applied via the `--rpt-font` CSS var that the table's
+  // th/td font-size reads. Print is unaffected (fixed 8px via print: classes).
+  const FONT_FLOOR = 11;
+  const FONT_CEIL = 14;
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  const recomputeFit = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const cont = wrap.querySelector<HTMLElement>('[data-slot="table-container"]');
+    const table = cont?.querySelector("table");
+    if (!cont || !table) return;
+    const avail = cont.clientWidth;
+    if (avail <= 0) return;
+    // Measure the natural (content-driven) width by dropping the w-full stretch,
+    // then binary-search the largest font that keeps it within `avail`. Doing it
+    // by measurement (not a linear ratio) accounts for fixed padding/borders.
+    const prevWidth = table.style.width;
+    table.style.width = "max-content";
+    const fits = (f: number) => {
+      wrap.style.setProperty("--rpt-font", `${f}px`);
+      return table.scrollWidth <= avail;
+    };
+    let lo = FONT_FLOOR;
+    let hi = FONT_CEIL;
+    let best = FONT_FLOOR;
+    for (let i = 0; i < 16; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) {
+        best = mid;
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    table.style.width = prevWidth; // restore w-full so columns fill the row
+    wrap.style.setProperty("--rpt-font", `${best.toFixed(2)}px`);
+  }, []);
+
+  // Recompute after the table renders and whenever the data (and thus column
+  // content widths) changes.
+  useLayoutEffect(() => {
+    recomputeFit();
+  }, [recomputeFit, reportData]);
+
+  // Recompute on container width changes (sidebar toggle, window resize).
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    let lastW = 0;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (Math.abs(w - lastW) < 1) return; // ignore height-only changes to avoid loops
+      lastW = w;
+      recomputeFit();
+    });
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [recomputeFit]);
 
   const handleMarkComplete = async () => {
     if (!pendingCompletion) return;
@@ -302,8 +368,8 @@ export function ProductionReportTable({
       </CardHeader>
 
       <CardContent className="p-0">
-        <div className="w-full overflow-hidden print:overflow-visible">
-          <Table className="[&_th]:px-1 [&_td]:px-1 [&_th]:text-[11px] [&_td]:text-[11px] [&_td]:tabular-nums [&_thead_th]:font-semibold print:[&_th]:text-[8px] print:[&_td]:text-[8px] print:[&_th]:px-0.5 print:[&_td]:px-0.5">
+        <div ref={wrapRef} className="w-full overflow-hidden print:overflow-visible">
+          <Table className="[&_th]:px-1 [&_td]:px-1 [&_td]:py-1 [&_th]:text-[length:var(--rpt-font,11px)] [&_td]:text-[length:calc(var(--rpt-font,11px)_-_1px)] [&_td]:font-semibold [&_td]:tabular-nums [&_thead_th]:font-semibold [&_thead_tr:last-child_th]:font-normal [&_thead_tr:last-child_th]:text-muted-foreground [&_tbody_tr>td:nth-child(n+8):nth-child(-n+29)]:px-0.5 [&_thead_tr:last-child>th:nth-child(n+8):nth-child(-n+29)]:px-0.5 [&_thead_tr:first-child>th:nth-child(2n+8)]:bg-muted/40 print:[&_th]:!text-[8px] print:[&_td]:!text-[8px] print:[&_th]:px-0.5 print:[&_td]:px-0.5 print:[&_thead_tr:first-child>th]:!bg-transparent">
             <TableHeader>
               <TableRow>
                 <TableHead>LINE</TableHead>
@@ -330,7 +396,12 @@ export function ProductionReportTable({
                   Lining
                 </TableHead>
                 <TableHead className="text-center" colSpan={2}>
-                  Assembly Input
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-default">Assembly</span>
+                    </TooltipTrigger>
+                    <TooltipContent>Assembly Input</TooltipContent>
+                  </Tooltip>
                 </TableHead>
                 <TableHead className="text-center" colSpan={2}>
                   Output
@@ -348,7 +419,7 @@ export function ProductionReportTable({
                   Packed
                 </TableHead>
 
-                <TableHead>REMARKS</TableHead>
+                <TableHead className="text-center">Action</TableHead>
               </TableRow>
 
               <TableRow>
@@ -639,59 +710,115 @@ export function ProductionReportTable({
                             {formatNumber(order.packed?.cumulative || 0)}
                           </TableCell>
 
-                          <TableCell className="text-xs">
-                            <div className="flex items-center gap-1">
-                              {order.is_pending_transition && !order.is_hidden && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="mb-1 inline-flex w-fit cursor-default items-center text-amber-600 dark:text-amber-400">
-                                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-[260px]">
-                                    <div className="font-medium">
-                                      Pending {formatNumber(order.pending_quantity || 0)} pcs
-                                    </div>
-                                    <div className="text-muted-foreground">
-                                      {order.remarks
-                                        ? order.remarks.replace(/\s*\|\s*/g, " · ")
-                                        : "New style started on this line · Manual completion required"}
-                                    </div>
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-
+                          <TableCell className="text-center">
+                            {/* Single centered action icon per row; state-specific glyph.
+                                Interactive — hidden from print (no buttons on paper). */}
+                            <div className="flex items-center justify-center print:hidden">
                               {order.is_hidden ? (
-                                <div className="flex items-center gap-2">
-                                  <Badge
-                                    variant="outline"
-                                    className="border-muted-foreground/40 text-[10px] font-medium uppercase"
-                                  >
-                                    Hidden
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 gap-1 px-2 text-xs"
-                                    disabled={isUnhiding}
-                                    onClick={() =>
-                                      setPendingUnhide({
-                                        lineName: order.line,
-                                        styleName: order.style,
-                                        completionIds: (order.__completionIds || []).filter(
-                                          (id: number | null | undefined) => id != null
-                                        ),
-                                      })
-                                    }
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                    Mark as Active
-                                  </Button>
-                                </div>
-                              ) : (
+                                // Hidden: greyed row already signals status; Eye button
+                                // opens a menu to bring the style back to Active.
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0 text-muted-foreground"
+                                      aria-label="Hidden — actions"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel className="text-[10px] font-medium uppercase text-muted-foreground">
+                                      Hidden
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuItem
+                                      disabled={isUnhiding}
+                                      onClick={() =>
+                                        setPendingUnhide({
+                                          lineName: order.line,
+                                          styleName: order.style,
+                                          completionIds: (order.__completionIds || []).filter(
+                                            (id: number | null | undefined) => id != null
+                                          ),
+                                        })
+                                      }
+                                    >
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      Mark as Active
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              ) : order.is_pending_transition ? (
+                                // Pending transition: amber ⚠ button. Hover shows the
+                                // pending detail (tooltip, unchanged); click opens the
+                                // menu (same detail as a header + Mark Complete).
+                                <DropdownMenu>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 w-7 p-0 text-amber-600 dark:text-amber-400"
+                                          aria-label="Pending transition — actions"
+                                        >
+                                          <AlertTriangle className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[260px]">
+                                      <div className="font-medium">
+                                        Pending {formatNumber(order.pending_quantity || 0)} pcs
+                                      </div>
+                                      <div className="text-muted-foreground">
+                                        {order.remarks
+                                          ? order.remarks.replace(/\s*\|\s*/g, " · ")
+                                          : "New style started on this line · Manual completion required"}
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuLabel className="max-w-[240px] font-normal">
+                                      <div className="font-medium">
+                                        Pending {formatNumber(order.pending_quantity || 0)} pcs
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {order.remarks
+                                          ? order.remarks.replace(/\s*\|\s*/g, " · ")
+                                          : "New style started on this line · Manual completion required"}
+                                      </div>
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setPendingCompletion({
+                                          lineName: order.line,
+                                          styleName: order.style,
+                                          items: (order.__items || []).map((it: any) => ({
+                                            order_id: it.order_id,
+                                            production_line_id: it.production_line_id,
+                                            size: it.size ?? "",
+                                            color: it.color ?? "",
+                                          })),
+                                        })
+                                      }
+                                    >
+                                      <EyeOff className="mr-2 h-4 w-4" />
+                                      Mark Complete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              ) : (
+                                // Normal: ⋯ menu with Mark Complete.
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      aria-label="Row actions"
+                                    >
                                       <MoreHorizontal className="h-4 w-4" />
                                     </Button>
                                   </DropdownMenuTrigger>
@@ -723,7 +850,7 @@ export function ProductionReportTable({
                     );
                   })}
 
-                  <TableRow className="bg-muted/30 font-medium">
+                  <TableRow className="rpt-subtotal bg-muted/30 font-medium">
                     <TableCell colSpan={3}>
                       <Badge variant="secondary">{buyer} Total</Badge>
                     </TableCell>

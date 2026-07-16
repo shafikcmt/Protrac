@@ -16,6 +16,10 @@ orders. All callers should use:
   * :func:`is_style_complete`            — the pure rule (input vs output)
   * :func:`get_manual_completed_order_ids` — manual completions for a line
   * :func:`get_hidden_order_ids_for_line`  — manual ∪ auto-hidden, as of a date
+  * :func:`get_inactive_order_ids_for_line` — hidden ∪ superseded-by-newer-style
+    (Conditions 1+1b+2), for the scan surfaces + V3 (NOT the DPR)
+  * :func:`get_inactive_order_ids_for_heatmap` — the above ∪ delivery-expired
+    (Conditions 1+1b+2+3), for the heatmap surfaces ONLY
 
 The functions are intentionally cheap (a small fixed number of grouped queries
 per line) so they can be dropped into the existing per-line loops without
@@ -227,3 +231,130 @@ def get_hidden_order_ids_for_line(
             hidden.add(oid)
 
     return hidden
+
+
+# ----------------------------
+# Newest-style / inactive rule (2-tier: scan surfaces vs heatmap)
+# ----------------------------
+
+def get_active_style_id_for_line(
+    line: ProductionLine,
+    as_of_date: Optional[date] = None,
+) -> Optional[int]:
+    """Style id of the order whose bundle was issued most recently on ``line``.
+
+    "Newest style on the line" is defined by the latest ``Bundle.issued_at`` (the
+    same signal the daily production report uses to pick its active order/style),
+    bounded to the end of ``as_of_date``. Returns ``None`` when the line has no
+    issued bundles yet.
+    """
+    day_end = _as_of_day_end(as_of_date)
+    return (
+        Bundle.objects.filter(
+            assigned_sewing_line=line,
+            issued_at__isnull=False,
+            issued_at__lte=day_end,
+        )
+        .order_by("-issued_at")
+        .values_list("order__style_id", flat=True)
+        .first()
+    )
+
+
+def _resolve_line_orders(
+    line: ProductionLine,
+    orders: Optional[Iterable[Order]],
+) -> List[Order]:
+    """Materialise the orders to consider for ``line`` (all with bundle activity
+    when the caller doesn't supply an explicit list)."""
+    if orders is None:
+        line_order_ids = list(
+            Bundle.objects.filter(assigned_sewing_line=line)
+            .order_by()
+            .values_list("order_id", flat=True)
+            .distinct()
+        )
+        return list(
+            Order.objects.filter(id__in=line_order_ids).prefetch_related("style__parts")
+        )
+    return list(orders)
+
+
+def _superseded_order_ids(
+    line: ProductionLine,
+    orders: List[Order],
+    as_of_date: Optional[date] = None,
+) -> set:
+    """Condition 2 order ids: a different style than the line's newest style that
+    still has pending pieces (``order.quantity - cumulative_output > 0``)."""
+    active_style_id = get_active_style_id_for_line(line, as_of_date=as_of_date)
+    if active_style_id is None:
+        return set()
+
+    superseded = set()
+    io = compute_line_input_output(line, orders, as_of_date=as_of_date)
+    for order in orders:
+        if order.style_id == active_style_id:
+            continue
+        cum_out = io.get(order.id, (0, 0))[1]
+        pending = max(int(order.quantity or 0) - int(cum_out or 0), 0)
+        if pending > 0:
+            superseded.add(order.id)
+    return superseded
+
+
+def get_inactive_order_ids_for_line(
+    line: ProductionLine,
+    as_of_date: Optional[date] = None,
+    orders: Optional[Iterable[Order]] = None,
+) -> set:
+    """Inactive order ids for the SCAN surfaces + V3 dashboard.
+
+    Inactive = union (as of ``as_of_date``):
+
+      1. hidden — manually completed OR fully output (see
+         :func:`get_hidden_order_ids_for_line`);
+      2. superseded — a different style than the line's newest style (latest
+         issued bundle) that still has pending pieces vs the order quantity.
+
+    Used by assembly scan (part-receive + garment-issue), bundle-issue scan,
+    sewing-QC scan and the V3 dashboard. **Delivery-date expiry (Condition 3) is
+    intentionally NOT applied here** — see :func:`get_inactive_order_ids_for_heatmap`.
+
+    The Daily Production Report does NOT use this: it keeps rendering the
+    superseded ("pending transition") rows with a warning + "Mark Complete"
+    action instead of silently hiding them.
+    """
+    orders = _resolve_line_orders(line, orders)
+
+    # Condition 1 (∪ 1b): manual ∪ fully-output (reuses the shared rule).
+    inactive = get_hidden_order_ids_for_line(line, as_of_date=as_of_date, orders=orders)
+    # Condition 2: superseded by a newer style on the line, still pending.
+    inactive |= _superseded_order_ids(line, orders, as_of_date=as_of_date)
+    return inactive
+
+
+def get_inactive_order_ids_for_heatmap(
+    line: ProductionLine,
+    as_of_date: Optional[date] = None,
+    orders: Optional[Iterable[Order]] = None,
+) -> set:
+    """Inactive order ids for the HEATMAP surfaces only (kiosk garments heatmap
+    and the serial heatmap grid).
+
+    Inactive = :func:`get_inactive_order_ids_for_line` (Conditions 1 + 1b + 2)
+    **plus** Condition 3 — delivery-date expired (``delivery_date <= as_of_date``);
+    a null ``delivery_date`` counts as still-active. No other surface applies the
+    delivery-date rule.
+    """
+    orders = _resolve_line_orders(line, orders)
+
+    inactive = get_inactive_order_ids_for_line(line, as_of_date=as_of_date, orders=orders)
+
+    # Condition 3: delivery date expired (null = still active).
+    cutoff = as_of_date or today()
+    for order in orders:
+        dd = getattr(order, "delivery_date", None)
+        if dd is not None and dd <= cutoff:
+            inactive.add(order.id)
+    return inactive

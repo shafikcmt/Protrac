@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { compareDefectCodes } from "@/lib/defect-codes";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 
@@ -46,7 +47,7 @@ export function DefectsQuickSelect({
     () =>
       defects
         .filter((d) => !!d.code)
-        .sort((a, b) => (a.code || "").localeCompare(b.code || "")),
+        .sort((a, b) => compareDefectCodes(a.code || "", b.code || "")),
     [defects]
   );
 

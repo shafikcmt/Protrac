@@ -8,6 +8,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 .venv/
+venv/
 env/
 build/
 develop-eggs/
@@ -60,5 +61,8 @@ media/
 db.sqlite3
 local_settings.py
 
-# Environment 
+# Environment
 .env
+
+# Archives / DB backups (never commit)
+*.zip

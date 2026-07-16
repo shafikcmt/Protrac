@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { schemas } from "@/types/api/client";
+import { getNextDefectCode } from "@/lib/defect-codes";
 
 type Defect = z.infer<typeof schemas.Defect>;
 type DefectRequest = z.infer<typeof schemas.DefectRequest>;
@@ -31,6 +32,8 @@ interface DefectFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defect?: Defect | null;
+  /** All existing defects — used to auto-suggest the next code on create. */
+  existingDefects?: Defect[];
   onSubmit: (data: DefectRequest) => void;
   isLoading?: boolean;
 }
@@ -39,25 +42,39 @@ export function DefectForm({
   open,
   onOpenChange,
   defect,
+  existingDefects = [],
   onSubmit,
   isLoading,
 }: DefectFormProps) {
   const form = useForm<DefectRequest>({
     resolver: zodResolver(schemas.DefectRequest),
     defaultValues: {
+      code: "",
       name: "",
       description: undefined,
     },
   });
 
-  // Reset form when defect changes or dialog opens/closes
+  // Reset form when defect changes or dialog opens/closes. When creating a NEW
+  // defect, pre-fill the code with the next one in sequence (A, B … Z, Aa …) —
+  // still editable if the user wants a custom code. When editing, show the
+  // existing code as-is and never auto-suggest.
   useEffect(() => {
     if (open) {
+      const suggestedCode = defect
+        ? defect.code || ""
+        : getNextDefectCode(
+            existingDefects.map((d) => d.code || "").filter(Boolean)
+          );
       form.reset({
+        code: suggestedCode,
         name: defect?.name || "",
         description: defect?.description || undefined,
       });
     }
+    // existingDefects is intentionally excluded — we only recompute the suggestion
+    // when the dialog opens or the target defect changes, not on every list refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defect, open, form]);
   const handleSubmit = (data: DefectRequest) => {
     onSubmit(data);
@@ -92,6 +109,25 @@ export function DefectForm({
                       <Input
                         placeholder="Enter defect name"
                         {...field}
+                        disabled={isLoading}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="code"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Code</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. A, B, Aa"
+                        {...field}
+                        value={field.value ?? ""}
                         disabled={isLoading}
                       />
                     </FormControl>

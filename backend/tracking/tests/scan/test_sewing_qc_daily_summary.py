@@ -1,15 +1,23 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from django.utils import timezone
 
-from tracking.models import Scanner, QualityCheck, Scan
+from tracking.models import (
+    Scanner,
+    QualityCheck,
+    Scan,
+    LineStyleCompletion,
+    LineTarget,
+)
 from tracking.models.constants import (
     ScannerType,
     LineType,
     GarmentStatus,
     QualityCheckStatus,
+    QualityCheckCheckpoint,
     ScanEventType,
 )
 from tracking.services.scan.sewing_qc_daily_summary import (
@@ -21,6 +29,8 @@ from tracking.tests.conftest import (
     OrderFactory,
     GarmentFactory,
     DefectFactory,
+    StyleFactory,
+    SizeFactory,
 )
 
 
@@ -56,6 +66,95 @@ class TestSewingQCDailySummary:
             scanner=setup["scanner"],
             event_type=ScanEventType.SEWING_QUALITY_CHECK,
         )
+
+    def _pass_qc_at(self, setup, seq, local_time):
+        """A PASS QualityCheck today whose created_at is forced to a specific local
+        (Dhaka) time, so it lands in a deterministic hour bucket."""
+        qc = QualityCheck.objects.create(
+            garment=self._garment(setup, seq), status=QualityCheckStatus.PASS
+        )
+        today = timezone.localdate()
+        aware = datetime.combine(today, local_time, tzinfo=ZoneInfo("Asia/Dhaka"))
+        # created_at has auto_now_add=True, so bypass it with an explicit update.
+        QualityCheck.objects.filter(pk=qc.pk).update(created_at=aware)
+        return qc
+
+    def test_hourly_target_vs_actual_with_target(self, setup):
+        """With a daily target, hourly has one row per work hour, the per-hour
+        target from the target, and QC-pass actuals bucketed by the shared shift
+        anchor (normal shift starts 08:15, so 08:30 -> H1, 09:30 -> H2)."""
+        LineTarget.objects.create(
+            line=setup["line"],
+            date=timezone.localdate(),
+            target_quantity=80,
+            work_hours=8,
+        )
+        # Two passes in H1, one in H2.
+        self._pass_qc_at(setup, 1, time(8, 30))
+        self._pass_qc_at(setup, 2, time(8, 45))
+        self._pass_qc_at(setup, 3, time(9, 30))
+
+        hourly = get_sewing_qc_daily_summary(setup["user"])["hourly"]
+
+        assert len(hourly) == 8
+        assert [r["hour"] for r in hourly] == list(range(1, 9))
+        # ceil(80 / 8) = 10 per hour.
+        assert all(r["target"] == 10 for r in hourly)
+        assert hourly[0]["actual"] == 2
+        assert hourly[1]["actual"] == 1
+        assert sum(r["actual"] for r in hourly) == 3
+
+    def test_hourly_default_8hr_without_target(self, setup):
+        """With no daily target, hourly defaults to 8 hours (H1..H8) with target 0
+        and QC-pass actuals still filled from real scans."""
+        self._pass_qc_at(setup, 1, time(8, 30))  # H1
+
+        hourly = get_sewing_qc_daily_summary(setup["user"])["hourly"]
+
+        assert len(hourly) == 8
+        assert [r["hour"] for r in hourly] == list(range(1, 9))
+        assert all(r["target"] == 0 for r in hourly)
+        assert hourly[0]["actual"] == 1
+        assert sum(r["actual"] for r in hourly) == 1
+
+    def test_finishing_qc_records_excluded_from_sewing_card(self, setup):
+        """A garment passing BOTH sewing QC and finishing QC the same day must count
+        only ONCE here. Finishing-QC records (checkpoint FINISHING_QC) hang off the
+        same sewing-line garment, so without the checkpoint scope they would leak
+        into output / inspected / DHU / the hourly Actual — this guards against that."""
+        dhaka = ZoneInfo("Asia/Dhaka")
+        today = timezone.localdate()
+        garment = self._garment(setup, 1, GarmentStatus.SEWING_QC_PASS)
+
+        # Sewing QC PASS at 08:30 (H1) — the only record that should count here.
+        sew = QualityCheck.objects.create(
+            garment=garment,
+            status=QualityCheckStatus.PASS,
+            checkpoint=QualityCheckCheckpoint.SEWING_QC,
+        )
+        QualityCheck.objects.filter(pk=sew.pk).update(
+            created_at=datetime.combine(today, time(8, 30), tzinfo=dhaka)
+        )
+
+        # Finishing QC PASS at 10:00 the SAME day on the SAME garment — must NOT
+        # count on the sewing-QC card.
+        fin = QualityCheck.objects.create(
+            garment=garment,
+            status=QualityCheckStatus.PASS,
+            checkpoint=QualityCheckCheckpoint.FINISHING_QC,
+        )
+        QualityCheck.objects.filter(pk=fin.pk).update(
+            created_at=datetime.combine(today, time(10, 0), tzinfo=dhaka)
+        )
+
+        result = get_sewing_qc_daily_summary(setup["user"])
+
+        # Only the sewing pass counts — not the finishing pass.
+        assert result["total_output"] == 1
+        assert result["total_inspected"] == 1
+        # Hourly Actual: the sewing pass in H1 only (finishing 10:00 excluded).
+        assert result["hourly"][0]["actual"] == 1
+        assert sum(h["actual"] for h in result["hourly"]) == 1
 
     def test_user_without_scanner_raises(self):
         user = UserFactory(assigned_scanner=None)
@@ -239,3 +338,103 @@ class TestSewingQCDailySummary:
         assert [c["tracking_code"] for c in result["garments_grid"]] == [
             active_pending.tracking_code
         ]
+
+
+@pytest.mark.django_db
+class TestSewingQCDailySummaryOrderGroups:
+    """`order_groups`: every order active in sewing-QC TODAY (size-wise) gets its
+    own serial grid, most recently active on top."""
+
+    @pytest.fixture
+    def setup(self):
+        line = ProductionLineFactory(line_type=LineType.SEWING)
+        scanner = Scanner.objects.create(
+            name="Sewing QC Scanner",
+            scanner_type=ScannerType.SEWING_QC_CHECK,
+            production_line=line,
+        )
+        user = UserFactory(assigned_scanner=scanner)
+        style = StyleFactory()
+        return {"line": line, "scanner": scanner, "user": user, "style": style}
+
+    def _qc_scan_at(self, setup, garment, minutes_ago):
+        """A sewing-QC scan today, pinned to a specific time (created_at has
+        auto_now_add, so overwrite it) to make recency deterministic."""
+        scan = Scan.objects.create(
+            garment=garment,
+            scanner=setup["scanner"],
+            event_type=ScanEventType.SEWING_QUALITY_CHECK,
+        )
+        when = timezone.now() - timedelta(minutes=minutes_ago)
+        Scan.objects.filter(pk=scan.pk).update(created_at=when)
+        return scan
+
+    def _garment(self, order, line, seq, status=GarmentStatus.SEWING_QC_PASS, **extra):
+        return GarmentFactory(
+            order=order,
+            sequence_number=seq,
+            sewing_line=line,
+            status=status,
+            **extra,
+        )
+
+    def test_multiple_sizes_same_style_all_appear_sorted_by_recency(self, setup):
+        """Two sizes of the same style QC'd today -> two order_groups, the more
+        recently active order on top, each carrying its own size + grid."""
+        style, line = setup["style"], setup["line"]
+        order_s = OrderFactory(style=style, size=SizeFactory(name="S"))
+        order_l = OrderFactory(style=style, size=SizeFactory(name="L"))
+
+        g_s = self._garment(order_s, line, 1, GarmentStatus.ISSUED_FOR_ASSEMBLY)
+        g_l = self._garment(order_l, line, 1, GarmentStatus.ISSUED_FOR_ASSEMBLY)
+        # Size S scanned earlier (10 min ago), size L later (2 min ago) -> L on top.
+        self._qc_scan_at(setup, g_s, minutes_ago=10)
+        self._qc_scan_at(setup, g_l, minutes_ago=2)
+
+        result = get_sewing_qc_daily_summary(setup["user"])
+        groups = result["order_groups"]
+
+        assert len(groups) == 2
+        assert groups[0]["size"] == "L"
+        assert groups[1]["size"] == "S"
+        assert groups[0]["style"] == style.name
+        assert groups[0]["order_number"] == order_l.order_number
+        assert [c["sequence_number"] for c in groups[0]["garments_grid"]] == [1]
+        # Backward-compat: active_order + flat grid mirror the top group.
+        assert result["active_order"]["order_number"] == order_l.order_number
+        assert result["garments_grid"] == groups[0]["garments_grid"]
+
+    def test_order_with_no_qc_scan_today_absent(self, setup):
+        """An order with garments on this line but no sewing-QC scan today never
+        appears in order_groups."""
+        style, line = setup["style"], setup["line"]
+        active = OrderFactory(style=style, size=SizeFactory(name="M"))
+        idle = OrderFactory(style=style, size=SizeFactory(name="XL"))
+        self._garment(idle, line, 1, GarmentStatus.ISSUED_FOR_ASSEMBLY)
+
+        g = self._garment(active, line, 1, GarmentStatus.ISSUED_FOR_ASSEMBLY)
+        self._qc_scan_at(setup, g, minutes_ago=1)
+
+        result = get_sewing_qc_daily_summary(setup["user"])
+        numbers = [grp["order_number"] for grp in result["order_groups"]]
+
+        assert active.order_number in numbers
+        assert idle.order_number not in numbers
+        assert len(result["order_groups"]) == 1
+
+    def test_hidden_order_excluded_from_order_groups(self, setup):
+        """A manually-completed (hidden) order is dropped from order_groups."""
+        style, line = setup["style"], setup["line"]
+        order = OrderFactory(style=style, size=SizeFactory(name="S"))
+        g = self._garment(order, line, 1, GarmentStatus.ISSUED_FOR_ASSEMBLY)
+        self._qc_scan_at(setup, g, minutes_ago=1)
+
+        before = get_sewing_qc_daily_summary(setup["user"])
+        assert len(before["order_groups"]) == 1
+
+        LineStyleCompletion.objects.create(production_line=line, order=order)
+
+        after = get_sewing_qc_daily_summary(setup["user"])
+        assert after["order_groups"] == []
+        assert after["active_order"] is None
+        assert after["garments_grid"] == []

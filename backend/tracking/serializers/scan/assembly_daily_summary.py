@@ -41,6 +41,18 @@ class DailySummaryGarmentCellSerializer(serializers.Serializer):
     )
 
 
+class DailySummaryOrderGroupSerializer(serializers.Serializer):
+    """One order active today (size-wise), with its own serial grid."""
+
+    order_number = serializers.CharField()
+    style = serializers.CharField()
+    size = serializers.CharField()
+    last_activity_at = serializers.CharField(
+        help_text="ISO timestamp of this order's most recent scan today (sort key)"
+    )
+    garments_grid = DailySummaryGarmentCellSerializer(many=True)
+
+
 class DailySummaryHourSerializer(serializers.Serializer):
     """One hourly bucket: bundles received vs garments assembly-complete."""
 
@@ -67,4 +79,5 @@ class AssemblyDailySummaryResponseSerializer(serializers.Serializer):
     recent_garments = DailySummaryGarmentSerializer(many=True)
     active_order = DailySummaryActiveOrderSerializer(allow_null=True)
     garments_grid = DailySummaryGarmentCellSerializer(many=True)
+    order_groups = DailySummaryOrderGroupSerializer(many=True)
     hourly = DailySummaryHourSerializer(many=True)
