@@ -46,6 +46,7 @@ from tracking.api import (
     sewing_qc_daily_summary,
     sewing_qc_scan,
     sewing_qc_info,
+    finishing_qc_daily_summary,
     finishing_qc_scan,
     finishing_qc_info,
 )
@@ -168,6 +169,11 @@ urlpatterns = [
         "sewing-qc/daily-summary/",
         sewing_qc_daily_summary,
         name="sewing-qc-daily-summary",
+    ),
+    path(
+        "finishing-qc/daily-summary/",
+        finishing_qc_daily_summary,
+        name="finishing-qc-daily-summary",
     ),
     path("info/sewing-qc/", sewing_qc_info, name="scan-sewing-qc-info"),
     path(

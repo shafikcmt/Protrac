@@ -333,6 +333,43 @@ const PatchedDefectRequest = z
   })
   .partial()
   .passthrough();
+const FinishingQCActiveOrder = z
+  .object({ order_number: z.string(), style: z.string() })
+  .passthrough();
+const FinishingQCGarmentCell = z
+  .object({
+    sequence_number: z.number().int(),
+    tracking_code: z.string(),
+    sewing_status: z.string(),
+    finishing_status: z.string(),
+    finishing_checked_date: z.string().nullable(),
+  })
+  .passthrough();
+const FinishingQCOrderGroup = z
+  .object({
+    order_number: z.string(),
+    style: z.string(),
+    size: z.string(),
+    last_activity_at: z.string(),
+    garments_grid: z.array(FinishingQCGarmentCell),
+  })
+  .passthrough();
+const FinishingQCDailySummaryResponse = z
+  .object({
+    line: z.string(),
+    date: z.string(),
+    total_output: z.number().int(),
+    total_rework: z.number().int(),
+    total_fail: z.number().int(),
+    pass_rate: z.number(),
+    total_inspected: z.number().int(),
+    total_defects: z.number().int(),
+    dhu: z.number(),
+    active_order: FinishingQCActiveOrder.nullable(),
+    garments_grid: z.array(FinishingQCGarmentCell),
+    order_groups: z.array(FinishingQCOrderGroup),
+  })
+  .passthrough();
 const GarmentStatusEnum = z.enum([
   "pending_assembly",
   "issued_for_assembly",
@@ -1322,6 +1359,10 @@ export const schemas = {
   PaginatedDefectList,
   DefectRequest,
   PatchedDefectRequest,
+  FinishingQCActiveOrder,
+  FinishingQCGarmentCell,
+  FinishingQCOrderGroup,
+  FinishingQCDailySummaryResponse,
   GarmentStatusEnum,
   Garment,
   PaginatedGarmentList,
@@ -2096,6 +2137,21 @@ token if the refresh token is valid.`,
       },
     ],
     response: z.void(),
+  },
+  {
+    method: "get",
+    path: "/api/tracking/finishing-qc/daily-summary/",
+    alias: "tracking_finishing_qc_daily_summary_retrieve",
+    description: `Today&#x27;s finishing-QC tally for the current user&#x27;s line: output (pass), rework, fail, pass-rate and DHU%, plus a per-order serial grid where each serial shows both its sewing-QC and finishing-QC status.`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "date",
+        type: "Query",
+        schema: z.string().optional(),
+      },
+    ],
+    response: FinishingQCDailySummaryResponse,
   },
   {
     method: "get",

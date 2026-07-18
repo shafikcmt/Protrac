@@ -195,6 +195,48 @@ class TestFinishingQCScan:
         setup_data["garment"].refresh_from_db()
         assert setup_data["garment"].status == GarmentStatus.FINISHING_QC_PASS
 
+    def test_reevaluation_auto_detected_without_flag(self, api_client, setup_data):
+        """A garment in FINISHING_QC_REWORK/FAIL can be re-scanned with NO
+        is_reevaluation flag — the backend auto-detects it from status (mirrors
+        sewing QC). It passes and is flagged as a re-evaluation."""
+        setup_data["garment"].status = GarmentStatus.FINISHING_QC_REWORK
+        setup_data["garment"].save()
+
+        api_client.force_authenticate(user=setup_data["user"])
+        url = reverse("tracking:scan-finishing-qc")
+
+        data = {
+            "tracking_code": setup_data["garment"].tracking_code,
+            "qc_status": QualityCheckStatus.PASS,
+            # deliberately NO is_reevaluation flag
+        }
+
+        response = api_client.post(url, data)
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["is_reevaluation"] is True
+        assert response.data["garment_status"] == GarmentStatus.FINISHING_QC_PASS
+
+    def test_rescan_of_passed_garment_blocked(self, api_client, setup_data):
+        """A garment already FINISHING_QC_PASS is blocked from re-scan so output/DHU
+        are never double-counted (mirrors sewing QC; the old reevaluation flag no
+        longer bypasses this)."""
+        setup_data["garment"].status = GarmentStatus.FINISHING_QC_PASS
+        setup_data["garment"].save()
+
+        api_client.force_authenticate(user=setup_data["user"])
+        url = reverse("tracking:scan-finishing-qc")
+
+        data = {
+            "tracking_code": setup_data["garment"].tracking_code,
+            "qc_status": QualityCheckStatus.PASS,
+            "is_reevaluation": True,  # ignored — re-scan of a pass is still blocked
+        }
+
+        response = api_client.post(url, data)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "already passed finishing QC" in response.data["error"]
+
     def test_finishing_qc_scan_wrong_garment_status(self, api_client, setup_data):
         """Test scanning garment with wrong status."""
         # Set garment to wrong status

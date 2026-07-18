@@ -34,6 +34,12 @@ from .sewing_qc_daily_summary import (  # noqa
     SewingQCTopDefectSerializer,
     SewingQCDailySummaryResponseSerializer,
 )
+from .finishing_qc_daily_summary import (  # noqa
+    FinishingQCActiveOrderSerializer,
+    FinishingQCGarmentCellSerializer,
+    FinishingQCOrderGroupSerializer,
+    FinishingQCDailySummaryResponseSerializer,
+)
 from .sewing_qc import (  # noqa
     SewingQCScanSerializer,
     SewingQCScanResponseSerializer,
