@@ -88,7 +88,13 @@ function StatTile({
   );
 }
 
-export function SewingQCDailySummary() {
+export function SewingQCDailySummary({
+  onSerialSelect,
+}: {
+  /** When set, clicking a serial square fills the scan form's Tracking Code
+      field with that garment's tracking code (click-to-paste). */
+  onSerialSelect?: (trackingCode: string) => void;
+} = {}) {
   // Re-derive the Dhaka date on an interval so a long-open kiosk tab rolls over
   // to the next day automatically at midnight — no manual page reload needed.
   // Only bump state when the day actually changes to avoid needless re-renders.
@@ -308,6 +314,7 @@ export function SewingQCDailySummary() {
                 statusConfig={SEWING_QC_STATUS_CONFIG}
                 legendOrder={SEWING_QC_LEGEND_ORDER}
                 emptyMessage="No active order on this line today."
+                onSelect={onSerialSelect}
               />
             </>
           )}

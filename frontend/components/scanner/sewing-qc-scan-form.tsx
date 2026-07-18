@@ -51,12 +51,17 @@ interface SewingQCScanFormProps {
     description?: string | null;
   }>;
   isLoadingDefects: boolean;
+  /** When set (e.g. a serial square clicked in the Serial Status grid), fills
+   *  the Tracking Code field and focuses it. Each object identity is a new
+   *  request, so re-clicking the same code re-applies. */
+  prefill?: { trackingCode: string } | null;
 }
 
 export function SewingQCScanForm({
   onSubmit,
   isLoading,
   defects,
+  prefill,
 }: SewingQCScanFormProps) {
   const trackingCodeRef = useRef<HTMLInputElement>(null);
   const [selectedDefects, setSelectedDefects] = useState<number[]>([]);
@@ -78,6 +83,17 @@ export function SewingQCScanForm({
   useEffect(() => {
     trackingCodeRef.current?.focus();
   }, []);
+
+  // Fill + focus the Tracking Code field when a serial square is clicked in the
+  // Serial Status grid. Depends on the object identity so clicking the same code
+  // twice still re-applies. Mirrors the bundle-issue scan form's prefill.
+  useEffect(() => {
+    if (!prefill) return;
+    form.setValue("tracking_code", prefill.trackingCode, {
+      shouldValidate: true,
+    });
+    trackingCodeRef.current?.focus();
+  }, [prefill, form]);
 
   const resetForm = () => {
     form.reset();

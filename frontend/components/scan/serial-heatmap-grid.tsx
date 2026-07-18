@@ -40,9 +40,14 @@ export type SerialStatusConfig = Record<string, SerialStatusStyle>;
 function SerialBox({
   cell,
   style,
+  onSelect,
 }: {
   cell: SerialCell;
   style: SerialStatusStyle;
+  /** When set, clicking the square fills the caller's input with this cell's
+      tracking code (in addition to opening the hover popover). Optional so
+      callers that don't wire it (e.g. the assembly grid) are unaffected. */
+  onSelect?: (trackingCode: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
 
@@ -73,11 +78,13 @@ function SerialBox({
       <PopoverTrigger asChild>
         <button
           type="button"
+          onClick={() => onSelect?.(cell.tracking_code)}
           onMouseEnter={() => {
             cancelClose();
             setOpen(true);
           }}
           onMouseLeave={scheduleClose}
+          title={onSelect ? "Click to fill the Tracking Code field" : undefined}
           className={cn(
             "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[10px] font-medium tabular-nums transition-transform hover:scale-110",
             style.box
@@ -140,6 +147,7 @@ export function SerialHeatmapGrid({
   legendOrder,
   emptyMessage = "No garments to show.",
   scrollable = true,
+  onSelect,
 }: {
   cells: SerialCell[];
   statusConfig: SerialStatusConfig;
@@ -150,6 +158,10 @@ export function SerialHeatmapGrid({
       assembly summary), to avoid nested double-scrollbars. Defaults to true so
       existing single-grid callers keep their bounded, internally-scrolling box. */
   scrollable?: boolean;
+  /** When set, clicking a square fills the caller's Tracking Code input with
+      that cell's tracking code (click-to-paste). Optional: callers that don't
+      pass it (e.g. the assembly grid) keep the copy-only popover behaviour. */
+  onSelect?: (trackingCode: string) => void;
 }) {
   const order = legendOrder ?? Object.keys(statusConfig);
 
@@ -206,7 +218,12 @@ export function SerialHeatmapGrid({
           {cells.map((cell) => {
             const style = statusConfig[cell.status] ?? fallbackStyle;
             return (
-              <SerialBox key={cell.tracking_code} cell={cell} style={style} />
+              <SerialBox
+                key={cell.tracking_code}
+                cell={cell}
+                style={style}
+                onSelect={onSelect}
+              />
             );
           })}
         </div>
