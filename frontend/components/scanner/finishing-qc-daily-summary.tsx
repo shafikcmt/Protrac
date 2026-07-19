@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { apiHooks } from "@/lib/api";
 import {
   SerialDualHeatmapGrid,
-  SerialDualHeatmapLegend,
   type DualSerialCell,
   type DualStatusConfig,
 } from "@/components/scan/serial-dual-heatmap-grid";
@@ -33,7 +32,7 @@ function formatHeaderDate(iso: string): string {
   });
 }
 
-/* Sewing axis (top-left triangle) colour language — matches the sewing-QC grid:
+/* Sewing axis (legend only) colour language — matches the sewing-QC grid:
    pass = green, rework/fail = orange. */
 const SEWING_STATUS_CONFIG: DualStatusConfig = {
   sewing_qc_pass: { fill: "bg-green-500", dot: "bg-green-500", label: "Pass" },
@@ -45,23 +44,28 @@ const SEWING_STATUS_CONFIG: DualStatusConfig = {
 };
 const SEWING_LEGEND_ORDER = ["sewing_qc_pass", "sewing_qc_rework"];
 
-/* Finishing axis (bottom-right triangle): pending = slate (passed sewing, not
-   yet finishing-QC'd), pass = green, rework/fail = orange. */
+/* Finishing axis drives the serial box: SHAPE encodes stage, COLOUR the result.
+   pending = light-green SQUARE (passed sewing, awaiting finishing — reuses the
+   sewing_qc_pass green-500); pass = DARKER green-700 CIRCLE (fully complete, and
+   clearly distinct from the lighter pending square); rework/fail = orange CIRCLE. */
 const FINISHING_STATUS_CONFIG: DualStatusConfig = {
   finishing_qc_pending: {
-    fill: "bg-slate-400 dark:bg-slate-500",
-    dot: "bg-slate-400 dark:bg-slate-500",
-    label: "Pending",
-  },
-  finishing_qc_pass: {
     fill: "bg-green-500",
     dot: "bg-green-500",
+    label: "Pending",
+    shape: "square",
+  },
+  finishing_qc_pass: {
+    fill: "bg-green-700",
+    dot: "bg-green-700",
     label: "Pass",
+    shape: "circle",
   },
   finishing_qc_rework: {
     fill: "bg-orange-500",
     dot: "bg-orange-500",
     label: "Rework",
+    shape: "circle",
   },
 };
 const FINISHING_LEGEND_ORDER = [
@@ -271,25 +275,17 @@ export function FinishingQCDailySummary({
     setSelectedSizeIdx(0);
   };
 
-  // Day-wise grouping of the SELECTED order+size's serials: one section per
-  // finishing-QC date (most recent first), plus a separate Pending section for
-  // serials with no finishing record yet (finishing_checked_date === null).
+  // The SELECTED order+size's serials, filtered to today's actionable view: keep
+  // a serial when it is still PENDING finishing (no finishing_checked_date) or was
+  // finishing-QC'd TODAY (finishing_checked_date === the summary's own date, which
+  // is project-local like finishing_checked_date). Serials finished on a PAST day
+  // drop off so the grid stays focused on today's work rather than accumulating a
+  // growing history. Pending shows as a green square; today's finished serials as
+  // colour-coded round pills.
   const selectedCells: DualSerialCell[] = selectedGroup?.garments_grid ?? [];
-  const pendingCells = selectedCells.filter((c) => !c.finishing_checked_date);
-  const dateSections = (() => {
-    const byDate = new Map<string, DualSerialCell[]>();
-    for (const c of selectedCells) {
-      const d = c.finishing_checked_date;
-      if (!d) continue;
-      const bucket = byDate.get(d);
-      if (bucket) bucket.push(c);
-      else byDate.set(d, [c]);
-    }
-    // Dates descending (newest day first).
-    return Array.from(byDate.entries()).sort((a, b) =>
-      a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0
-    );
-  })();
+  const visibleCells = selectedCells.filter(
+    (c) => !c.finishing_checked_date || c.finishing_checked_date === data.date
+  );
 
   /** Passed-finishing / total serials across every size of an order — the
       at-a-glance progress shown on each order tab. */
@@ -476,74 +472,19 @@ export function FinishingQCDailySummary({
                 </div>
               )}
 
-              {/* One shared legend for the whole selected order/size, then the
-                  serials split into day-wise sections (by finishing-QC date, most
-                  recent first) plus a separate Pending section. Counts reflect the
-                  selected order/size. */}
-              <SerialDualHeatmapLegend
-                cells={selectedCells}
+              {/* One unified grid for the selected order/size: pending serials
+                  (green squares) + today's finishing-QC'd serials (colour-coded
+                  round pills). Serials finished on a past day are filtered out.
+                  Single legend on top (Sewing + Finishing counts). */}
+              <SerialDualHeatmapGrid
+                cells={visibleCells}
                 sewingConfig={SEWING_STATUS_CONFIG}
                 finishingConfig={FINISHING_STATUS_CONFIG}
                 sewingLegendOrder={SEWING_LEGEND_ORDER}
                 finishingLegendOrder={FINISHING_LEGEND_ORDER}
+                emptyMessage="No pending or today's finishing serials for this order."
+                onSelect={onSerialSelect}
               />
-
-              <div className="space-y-3">
-                {dateSections.length === 0 && pendingCells.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    No serials for this order yet.
-                  </p>
-                )}
-
-                {/* One section per finishing-QC date (newest first). */}
-                {dateSections.map(([date, dateCells]) => (
-                  <div key={date} className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-foreground">
-                        {formatHeaderDate(date)}
-                      </span>
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
-                        {dateCells.length}
-                      </span>
-                    </div>
-                    <SerialDualHeatmapGrid
-                      cells={dateCells}
-                      sewingConfig={SEWING_STATUS_CONFIG}
-                      finishingConfig={FINISHING_STATUS_CONFIG}
-                      sewingLegendOrder={SEWING_LEGEND_ORDER}
-                      finishingLegendOrder={FINISHING_LEGEND_ORDER}
-                      showLegend={false}
-                      onSelect={onSerialSelect}
-                    />
-                  </div>
-                ))}
-
-                {/* Pending — serials not yet finishing-QC'd. */}
-                {pendingCells.length > 0 && (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-foreground">
-                        Pending
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        not yet finishing-QC&apos;d
-                      </span>
-                      <span className="rounded-full bg-slate-400/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-600 dark:text-slate-300">
-                        {pendingCells.length}
-                      </span>
-                    </div>
-                    <SerialDualHeatmapGrid
-                      cells={pendingCells}
-                      sewingConfig={SEWING_STATUS_CONFIG}
-                      finishingConfig={FINISHING_STATUS_CONFIG}
-                      sewingLegendOrder={SEWING_LEGEND_ORDER}
-                      finishingLegendOrder={FINISHING_LEGEND_ORDER}
-                      showLegend={false}
-                      onSelect={onSerialSelect}
-                    />
-                  </div>
-                )}
-              </div>
             </>
           )}
         </div>

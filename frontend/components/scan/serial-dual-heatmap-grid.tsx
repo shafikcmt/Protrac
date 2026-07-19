@@ -23,28 +23,40 @@ export interface DualSerialCell {
 
 /** Visual config for a single status value: fill colour + legend swatch + label. */
 export interface DualStatusStyle {
-  /** Tailwind background class used for one triangle of the split square. */
+  /** Tailwind background class for the serial box + its legend swatch. */
   fill: string;
   /** Tailwind background class for the small legend swatch. */
   dot: string;
   /** Human-readable label used in the popover + legend. */
   label: string;
+  /** Box/swatch shape. "square" = a serial still pending finishing (awaiting
+      finishing QC); "circle" = a serial that has been finishing-QC'd. Defaults to
+      "circle". Encodes stage at a glance, independent of the fill colour. */
+  shape?: "square" | "circle";
 }
 
 /** Maps each status string (per axis) to its visual style. */
 export type DualStatusConfig = Record<string, DualStatusStyle>;
 
-/** A neutral fallback so an unmapped status still renders a triangle. */
+/** A neutral fallback so an unmapped status still renders a box. */
 const FALLBACK_STYLE: DualStatusStyle = {
   fill: "bg-gray-300 dark:bg-gray-600",
   dot: "bg-gray-400",
   label: "Unknown",
+  shape: "square",
 };
 
-/** One compact garment cell — a square split corner-to-corner: the top-left
-    triangle is coloured by sewing-QC status, the bottom-right by finishing-QC
-    status. Hover (desktop) / tap (touch) opens a popover spelling out both
-    statuses, the tracking code, and a copy button + optional click-to-fill. */
+/** Tailwind rounding for each box/swatch shape. */
+const SHAPE_CLASS: Record<NonNullable<DualStatusStyle["shape"]>, string> = {
+  square: "rounded-[5px]",
+  circle: "rounded-full",
+};
+
+/** One compact garment cell — a solid box whose SHAPE encodes finishing stage
+    (square = pending finishing, circle = finishing-QC'd) and whose COLOUR encodes
+    the result (green = pass/pending, orange = rework). Hover (desktop) / tap
+    (touch) opens a popover spelling out both sewing + finishing status, the
+    tracking code, and a copy button + optional click-to-fill. */
 function DualSerialBox({
   cell,
   sewingStyle,
@@ -89,30 +101,12 @@ function DualSerialBox({
           onMouseLeave={scheduleClose}
           title={onSelect ? "Click to fill the Tracking Code field" : undefined}
           className={cn(
-            "relative flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] text-[11px] font-semibold tabular-nums transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+            "flex h-7 w-7 flex-shrink-0 items-center justify-center text-[11px] font-semibold tabular-nums text-white transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+            finishingStyle.fill,
+            SHAPE_CLASS[finishingStyle.shape ?? "circle"]
           )}
         >
-          {/* Top-left triangle = sewing status */}
-          <span
-            className={cn("absolute inset-0", sewingStyle.fill)}
-            style={{ clipPath: "polygon(0 0, 100% 0, 0 100%)" }}
-          />
-          {/* Bottom-right triangle = finishing status */}
-          <span
-            className={cn("absolute inset-0", finishingStyle.fill)}
-            style={{ clipPath: "polygon(100% 0, 100% 100%, 0 100%)" }}
-          />
-          {/* Thin diagonal divider for legibility where the two colours meet */}
-          <span
-            className="absolute inset-0 bg-white/40 dark:bg-black/30"
-            style={{
-              clipPath:
-                "polygon(calc(100% - 1px) 0, 100% 0, 1px 100%, 0 100%)",
-            }}
-          />
-          <span className="relative z-10 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]">
-            {cell.sequence_number}
-          </span>
+          {cell.sequence_number}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -209,12 +203,17 @@ export function SerialDualHeatmapLegend({
       {order.map((key) => {
         const style = config[key];
         if (!style) return null;
+        // Swatch mirrors the grid shape (square = pending, circle = finishing-QC'd)
+        // so two same-colour entries (e.g. green Pending vs green Pass) stay
+        // distinguishable in the legend.
+        const swatchShape =
+          style.shape === "square" ? "rounded-[2px]" : "rounded-full";
         return (
           <span
             key={key}
             className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
           >
-            <span className={cn("h-2 w-2 rounded-full", style.dot)} />
+            <span className={cn("h-2 w-2", swatchShape, style.dot)} />
             {style.label}
             <span className="font-semibold tabular-nums text-foreground">
               {counts[key]}
