@@ -751,11 +751,27 @@ const cycleTheme = React.useCallback(() => {
                   <div className="text-white/55 truncate text-[var(--fs-sub)] bg-white/10 border border-white/15 px-2.5 py-1 rounded-full w-fit">
                     {activeLines.length ? `${activeLines.length} line(s)` : isLoading ? "Loading..." : "No data"}
                   </div>
-                  {activeLines.length === 1 && (activeLines[0] as any)?.active_style_name ? (
-                    <div className="text-cyan-200/80 truncate text-[var(--fs-sub)] bg-cyan-500/10 border border-cyan-400/25 px-2.5 py-1 rounded-full w-fit">
-                      Style: {(activeLines[0] as any).active_style_name}
-                    </div>
-                  ) : null}
+                  {activeLines.length === 1
+                    ? (() => {
+                        const one = activeLines[0] as any;
+                        // All live styles on the line; falls back to the
+                        // back-compat scalar for older payloads.
+                        const styles: string[] = Array.isArray(one?.active_style_names)
+                          ? one.active_style_names.filter(Boolean)
+                          : one?.active_style_name
+                            ? [one.active_style_name]
+                            : [];
+                        if (!styles.length) return null;
+                        return styles.map((name, i) => (
+                          <div
+                            key={name}
+                            className="text-cyan-200/80 truncate text-[var(--fs-sub)] bg-cyan-500/10 border border-cyan-400/25 px-2.5 py-1 rounded-full w-fit"
+                          >
+                            {i === 0 ? `Style: ${name}` : name}
+                          </div>
+                        ));
+                      })()
+                    : null}
                 </div>
               </div>
 

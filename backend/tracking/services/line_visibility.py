@@ -16,10 +16,15 @@ orders. All callers should use:
   * :func:`is_style_complete`            — the pure rule (input vs output)
   * :func:`get_manual_completed_order_ids` — manual completions for a line
   * :func:`get_hidden_order_ids_for_line`  — manual ∪ auto-hidden, as of a date
-  * :func:`get_inactive_order_ids_for_line` — hidden ∪ superseded-by-newer-style
-    (Conditions 1+1b+2), for the scan surfaces + V3 (NOT the DPR)
-  * :func:`get_inactive_order_ids_for_heatmap` — the above ∪ delivery-expired
-    (Conditions 1+1b+2+3), for the heatmap surfaces ONLY
+  * :func:`get_inactive_order_ids_for_line` — hidden only (Conditions 1+1b), for
+    the scan surfaces + V3 (NOT the DPR). Superseded-by-newer-style (old Condition
+    2) is NO LONGER auto-hidden here — see below.
+  * :func:`get_pending_transition_order_ids` — the old "superseded" set (older
+    style still in progress while a newer style was issued), now surfaced as an
+    ALERT instead of auto-hidden
+  * :func:`get_style_overlap_alert` — full alert payload for that overlap
+  * :func:`get_inactive_order_ids_for_heatmap` — hidden ∪ delivery-expired
+    (Conditions 1+1b+3), for the heatmap surfaces ONLY
 
 The functions are intentionally cheap (a small fixed number of grouped queries
 per line) so they can be dropped into the existing per-line loops without
@@ -310,28 +315,111 @@ def get_inactive_order_ids_for_line(
 ) -> set:
     """Inactive order ids for the SCAN surfaces + V3 dashboard.
 
-    Inactive = union (as of ``as_of_date``):
+    Inactive = hidden only (as of ``as_of_date``): manually completed OR fully
+    output (see :func:`get_hidden_order_ids_for_line`).
 
-      1. hidden — manually completed OR fully output (see
-         :func:`get_hidden_order_ids_for_line`);
-      2. superseded — a different style than the line's newest style (latest
-         issued bundle) that still has pending pieces vs the order quantity.
+    **Condition 2 (superseded-by-newer-style) was REMOVED here.** Merely issuing a
+    newer style's bundles on the line no longer auto-hides an older style that is
+    still in progress — that silently blanked out lines mid-transition (e.g. a
+    next style staged in the morning hid the style being actively QC'd). The
+    overlap is now surfaced as an ALERT (see :func:`get_style_overlap_alert`) and
+    an order is only hidden when a user explicitly marks it complete
+    (``LineStyleCompletion``, folded into Condition 1). The old superseded set is
+    still available via :func:`get_pending_transition_order_ids` for that alert.
 
     Used by assembly scan (part-receive + garment-issue), bundle-issue scan,
     sewing-QC scan and the V3 dashboard. **Delivery-date expiry (Condition 3) is
     intentionally NOT applied here** — see :func:`get_inactive_order_ids_for_heatmap`.
-
-    The Daily Production Report does NOT use this: it keeps rendering the
-    superseded ("pending transition") rows with a warning + "Mark Complete"
-    action instead of silently hiding them.
     """
     orders = _resolve_line_orders(line, orders)
 
-    # Condition 1 (∪ 1b): manual ∪ fully-output (reuses the shared rule).
-    inactive = get_hidden_order_ids_for_line(line, as_of_date=as_of_date, orders=orders)
-    # Condition 2: superseded by a newer style on the line, still pending.
-    inactive |= _superseded_order_ids(line, orders, as_of_date=as_of_date)
-    return inactive
+    # Condition 1 (∪ 1b) only: manual ∪ fully-output (reuses the shared rule).
+    return get_hidden_order_ids_for_line(line, as_of_date=as_of_date, orders=orders)
+
+
+def get_pending_transition_order_ids(
+    line: ProductionLine,
+    as_of_date: Optional[date] = None,
+    orders: Optional[Iterable[Order]] = None,
+) -> set:
+    """Order ids of OLDER styles still in progress while a NEWER style has been
+    issued on the line (the former "superseded" set).
+
+    These are **no longer auto-hidden** — they are surfaced as an overlap alert
+    and hidden only by explicit manual completion. Same detection the Daily
+    Production Report uses for its "pending transition" rows.
+    """
+    orders = _resolve_line_orders(line, orders)
+    return _superseded_order_ids(line, orders, as_of_date=as_of_date)
+
+
+def get_style_overlap_alert(
+    line: ProductionLine,
+    as_of_date: Optional[date] = None,
+) -> Optional[dict]:
+    """Alert payload when a newer style was issued on ``line`` while older-style
+    orders are still in progress; ``None`` when there is no such overlap.
+
+    Shape::
+
+        {
+          "production_line_id": int, "line": str,
+          "new_style_id": int, "new_style": str,          # the just-issued style
+          "in_progress_orders": [                         # older styles still pending
+            {"order_id", "order_number", "style", "size",
+             "pending_quantity", "completion_id"},        # completion_id set if already hidden
+          ],
+        }
+    """
+    from tracking.models import Style, LineStyleCompletion
+
+    orders = _resolve_line_orders(line, None)
+    pending_ids = _superseded_order_ids(line, orders, as_of_date=as_of_date)
+    # Only surface orders NOT already manually hidden (those are resolved).
+    manual = get_manual_completed_order_ids(line, as_of_date=as_of_date)
+    pending_ids = {oid for oid in pending_ids if oid not in manual}
+    if not pending_ids:
+        return None
+
+    new_style_id = get_active_style_id_for_line(line, as_of_date=as_of_date)
+    new_style = (
+        Style.objects.filter(id=new_style_id).values_list("name", flat=True).first()
+        if new_style_id is not None
+        else None
+    )
+
+    io = compute_line_input_output(line, orders, as_of_date=as_of_date)
+    completion_by_order = dict(
+        LineStyleCompletion.objects.filter(
+            production_line=line, order_id__in=pending_ids
+        ).values_list("order_id", "id")
+    )
+    detail_orders = Order.objects.filter(id__in=pending_ids).select_related(
+        "style", "size"
+    )
+
+    in_progress = []
+    for o in detail_orders:
+        cum_out = io.get(o.id, (0, 0))[1]
+        in_progress.append(
+            {
+                "order_id": o.id,
+                "order_number": o.order_number,
+                "style": o.style.name if o.style_id else None,
+                "size": getattr(getattr(o, "size", None), "name", None),
+                "pending_quantity": pending_quantity(int(o.quantity or 0), cum_out),
+                "completion_id": completion_by_order.get(o.id),
+            }
+        )
+    in_progress.sort(key=lambda r: r["order_number"] or "")
+
+    return {
+        "production_line_id": line.id,
+        "line": line.name,
+        "new_style_id": new_style_id,
+        "new_style": new_style,
+        "in_progress_orders": in_progress,
+    }
 
 
 def get_inactive_order_ids_for_heatmap(
@@ -342,10 +430,11 @@ def get_inactive_order_ids_for_heatmap(
     """Inactive order ids for the HEATMAP surfaces only (kiosk garments heatmap
     and the serial heatmap grid).
 
-    Inactive = :func:`get_inactive_order_ids_for_line` (Conditions 1 + 1b + 2)
-    **plus** Condition 3 — delivery-date expired (``delivery_date <= as_of_date``);
-    a null ``delivery_date`` counts as still-active. No other surface applies the
-    delivery-date rule.
+    Inactive = :func:`get_inactive_order_ids_for_line` (Conditions 1 + 1b —
+    hidden only) **plus** Condition 3 — delivery-date expired
+    (``delivery_date <= as_of_date``); a null ``delivery_date`` counts as
+    still-active. No other surface applies the delivery-date rule. (Superseded-
+    by-newer-style is no longer auto-hidden anywhere — it is an alert now.)
     """
     orders = _resolve_line_orders(line, orders)
 

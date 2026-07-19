@@ -1010,6 +1010,7 @@ const SewingLineDashboardV2 = z
     line_wip: z.number().int(),
     active_style_id: z.number().int().nullish(),
     active_style_name: z.string().nullish(),
+    active_style_names: z.array(z.string()).optional(),
     pending_old_style_count: z.number().int().optional().default(0),
     pending_old_pending_qty: z.number().int().optional().default(0),
     assembly_input_day: z.number().int().optional().default(0),
@@ -1175,6 +1176,25 @@ const SewingQCHour = z
     actual: z.number().int(),
   })
   .passthrough();
+const SewingQCOverlapOrder = z
+  .object({
+    order_id: z.number().int(),
+    order_number: z.string(),
+    style: z.string().nullable(),
+    size: z.string().nullable(),
+    pending_quantity: z.number().int(),
+    completion_id: z.number().int().nullable(),
+  })
+  .passthrough();
+const SewingQCStyleOverlapAlert = z
+  .object({
+    production_line_id: z.number().int(),
+    line: z.string(),
+    new_style_id: z.number().int().nullable(),
+    new_style: z.string().nullable(),
+    in_progress_orders: z.array(SewingQCOverlapOrder),
+  })
+  .passthrough();
 const SewingQCDailySummaryResponse = z
   .object({
     line: z.string(),
@@ -1191,6 +1211,7 @@ const SewingQCDailySummaryResponse = z
     garments_grid: z.array(SewingQCGarmentCell),
     order_groups: z.array(SewingQCOrderGroup),
     hourly: z.array(SewingQCHour),
+    style_overlap_alert: SewingQCStyleOverlapAlert.nullable(),
   })
   .passthrough();
 const Size = z
@@ -1449,6 +1470,8 @@ export const schemas = {
   SewingQCGarmentCell,
   SewingQCOrderGroup,
   SewingQCHour,
+  SewingQCOverlapOrder,
+  SewingQCStyleOverlapAlert,
   SewingQCDailySummaryResponse,
   Size,
   PaginatedSizeList,
