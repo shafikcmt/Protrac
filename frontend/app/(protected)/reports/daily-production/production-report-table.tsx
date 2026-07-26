@@ -784,7 +784,7 @@ export function ProductionReportTable({
                                       <div className="font-medium">
                                         Pending {formatNumber(order.pending_quantity || 0)} pcs
                                       </div>
-                                      <div className="text-muted-foreground">
+                                      <div className="text-primary-foreground/80">
                                         {pendingMessage(order)}
                                         {order.needs_manual_complete
                                           ? " Mark it complete to clear."
