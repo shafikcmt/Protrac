@@ -81,9 +81,12 @@ class TestFinishingDashboard:
         assert order_data["order_number"] == "ORD-001"
         assert order_data["customer_name"] == order.style.buyer.name
         assert order_data["style_name"] == order.style.name
-        assert order_data["input_garments"] == 1  # garments ready for finishing
+        # input = all garments in the finishing pipeline (the one that already
+        # passed finishing QC counts as input too), so 2 (sewing_qc_pass +
+        # finishing_qc_pass); output = the finished one; in_progress = the rest.
+        assert order_data["input_garments"] == 2
         assert order_data["output_garments"] == 1  # garments completed finishing
-        assert order_data["in_progress_garments"] == 0  # no garments in progress
+        assert order_data["in_progress_garments"] == 1  # still in finishing
 
         # Check QC stats structure
         qc_stats = order_data["qc_stats"]
@@ -108,7 +111,7 @@ class TestFinishingDashboard:
             order_data["customer_name"] == order.style.buyer.name
         )  # Get buyer name from style
         assert order_data["style_name"] == order.style.name
-        assert order_data["input_garments"] == 1
+        assert order_data["input_garments"] == 2
         assert order_data["output_garments"] == 1
 
     def test_finishing_dashboard_with_qc_stats(self, authenticated_client):
