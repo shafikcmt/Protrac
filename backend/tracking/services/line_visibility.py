@@ -23,6 +23,11 @@ orders. All callers should use:
     style still in progress while a newer style was issued), now surfaced as an
     ALERT instead of auto-hidden
   * :func:`get_style_overlap_alert` — full alert payload for that overlap
+  * :func:`get_visible_order_ids_for_line` — the positive set (active style ∪
+    pending old styles − hidden − delivery-expired), matching what the daily
+    production report actually renders. For cumulative-state surfaces that would
+    otherwise accumulate every never-completed historical order. NOTE its NULL
+    delivery_date handling is the opposite of the heatmap helper below
   * :func:`get_inactive_order_ids_for_heatmap` — hidden ∪ delivery-expired
     (Conditions 1+1b+3), for the heatmap surfaces ONLY
 
@@ -420,6 +425,89 @@ def get_style_overlap_alert(
         "new_style": new_style,
         "in_progress_orders": in_progress,
     }
+
+
+def get_visible_order_ids_for_line(
+    line: ProductionLine,
+    as_of_date: Optional[date] = None,
+    orders: Optional[Iterable[Order]] = None,
+) -> set:
+    """Order ids a scan surface should SHOW for ``line``; everything else is history.
+
+    This is the positive counterpart to :func:`get_inactive_order_ids_for_line`.
+    That function is a *hide-set* — it answers "is this order finished?", never
+    "is this order part of what the line is currently running?". A surface that
+    only excludes the hide-set therefore keeps every historical order that was
+    never manually completed and never fully output (abandoned runs, short
+    shipments, styles whose garments were input but never sewing-QC passed).
+    Cumulative-state surfaces with no date bound — notably the assembly
+    part-receive history — accumulate those forever.
+
+    Visible = the line's active style (every order sharing
+    :func:`get_active_style_id_for_line`'s style, so sibling sizes/colors of the
+    active run stay together, matching the daily production report)
+    ∪ older styles still pending transition (:func:`get_pending_transition_order_ids`)
+    − hidden (:func:`get_inactive_order_ids_for_line`)
+    − delivery-date expired.
+
+    Subtracting hidden LAST mirrors the report, where the manual/auto hide check
+    runs before the active-style exemption: explicitly completing the active
+    style still hides it. Every pending old style is returned, uncapped, exactly
+    as the report renders one ``is_pending_transition`` row per pending style.
+
+    The delivery-date gate is what actually bounds the set. Pending-transition is
+    defined as ``order.quantity - cumulative_output > 0`` (see
+    :func:`_superseded_order_ids`), and cumulative output essentially never lands
+    exactly on the ordered quantity — short ships, rejects and cancelled balances
+    leave a permanent remainder. ``is_style_complete`` does not close the gap
+    either: it compares input against output, not quantity against output. So on
+    a line with real history nearly every old order stays "pending" forever, and
+    without this gate the set grows without bound (observed: 45 orders on a line
+    whose report showed 6). The rule below is the report's, inlined verbatim from
+    ``daily_production_report._build_order_row``::
+
+        dd = getattr(order, "delivery_date", None)
+        if dd is None or dd <= report_date:
+            return None
+
+    Note the NULL handling: a missing delivery date is treated as EXPIRED here,
+    dropping the order. That is deliberate DPR parity and is the OPPOSITE of
+    :func:`get_inactive_order_ids_for_heatmap`, which treats NULL as still-active.
+    The two surfaces genuinely differ; do not "unify" them without checking the
+    report first.
+
+    Returns an empty set when the line has no issued bundles (no active style) —
+    such a line legitimately has nothing current to show.
+
+    No new rules are introduced here; this is a composition of the existing
+    primitives plus the report's own delivery gate. Callers of
+    :func:`get_inactive_order_ids_for_line` (kiosk v3, bundle-issue, sewing-QC,
+    heatmap) are unaffected.
+    """
+    orders = _resolve_line_orders(line, orders)
+
+    active_style_id = get_active_style_id_for_line(line, as_of_date=as_of_date)
+    if active_style_id is None:
+        return set()
+
+    visible = {o.id for o in orders if o.style_id == active_style_id}
+    visible |= get_pending_transition_order_ids(
+        line, as_of_date=as_of_date, orders=orders
+    )
+    visible -= get_inactive_order_ids_for_line(
+        line, as_of_date=as_of_date, orders=orders
+    )
+
+    # Delivery-date gate, applied last and uniformly — the active style is NOT
+    # exempt, exactly as in the report (an active-style order with no delivery
+    # date entered is dropped there too).
+    cutoff = as_of_date or today()
+    expired = {
+        o.id
+        for o in orders
+        if getattr(o, "delivery_date", None) is None or o.delivery_date <= cutoff
+    }
+    return visible - expired
 
 
 def get_inactive_order_ids_for_heatmap(

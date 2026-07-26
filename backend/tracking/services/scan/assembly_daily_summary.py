@@ -114,9 +114,13 @@ def get_assembly_daily_summary(
     if summary_date is None:
         summary_date = timezone.localdate()
 
-    # Only currently ACTIVE styles count here. Inactive = hidden (manual / fully
-    # output) ∪ superseded by a newer style on the line ∪ delivery expired, via
-    # the shared line-visibility source of truth for secondary scan surfaces.
+    # Drop finished styles. Inactive = hidden only: manually completed
+    # (LineStyleCompletion) ∪ fully output (input == output). Superseded-by-a-
+    # newer-style and delivery-expiry are NOT applied here — see the
+    # line_visibility docstring. That narrow hide-set is sufficient for this
+    # surface because every figure below is bounded to summary_date, so a stale
+    # historical order contributes nothing. Cumulative-state surfaces need the
+    # stricter get_visible_order_ids_for_line instead.
     from tracking.services.line_visibility import get_inactive_order_ids_for_line
 
     completed_order_ids = list(
