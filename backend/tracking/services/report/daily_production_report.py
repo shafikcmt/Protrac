@@ -300,6 +300,16 @@ def get_daily_production_report_data(
         active_style_id = next(
             (o.style_id for o in line_orders if o.id == active_order_id), None
         )
+        # Name of the newer/active style, surfaced on pending-transition rows so
+        # the UI can name it explicitly ("... while <new style> has started").
+        active_style_name = next(
+            (
+                o.style.name
+                for o in line_orders
+                if o.id == active_order_id and getattr(o, "style", None)
+            ),
+            None,
+        )
 
         # Work hours come from the line's target for the selected date. When no
         # target is configured the Hrs column shows "-" (None here), rather than
@@ -333,6 +343,7 @@ def get_daily_production_report_data(
                 active_only=active_only,
                 active_order_id=active_order_id,
                 active_style_id=active_style_id,
+                active_style_name=active_style_name,
                 completed_order_ids=completed_order_ids,
                 metrics=metrics,
                 line_work_hours=line_work_hours,
@@ -630,6 +641,7 @@ def _build_order_row(
     active_only: bool,
     active_order_id: Optional[int],
     active_style_id: Optional[int],
+    active_style_name: Optional[str],
     completed_order_ids: set,
     metrics: Dict[str, Dict[int, Any]],
     line_work_hours: Optional[int] = None,
@@ -819,6 +831,7 @@ def _build_order_row(
         "needs_manual_complete": needs_manual_complete,
         "is_pending_transition": is_pending_transition,
         "pending_quantity": pending_qty,
+        "active_style_name": active_style_name if is_pending_transition else None,
         "remarks": remarks,
         "is_hidden": is_hidden,
         "completion_id": (

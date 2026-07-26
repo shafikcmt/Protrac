@@ -267,6 +267,7 @@ export function ProductionReportTable({
           needs_manual_complete: false,
           is_pending_transition: false,
           pending_quantity: 0,
+          active_style_name: null,
           remarks: "",
           __dhuDayNum: 0,
           __dhuDayDen: 0,
@@ -289,6 +290,8 @@ export function ProductionReportTable({
       if (order.is_pending_transition) {
         acc.is_pending_transition = true;
         acc.pending_quantity += Number(order.pending_quantity || 0);
+        if (order.active_style_name && !acc.active_style_name)
+          acc.active_style_name = order.active_style_name;
         if (order.remarks && !acc.remarks) acc.remarks = order.remarks;
       }
 
@@ -345,6 +348,16 @@ export function ProductionReportTable({
 
   const formatNumber = (num: number) => (Number(num) || 0).toLocaleString();
   const formatPercentage = (num: number) => `${(Number(num) || 0).toFixed(2)}%`;
+  // Explicit, human-readable pending-transition message: names the old style,
+  // the exact un-QC'd pending qty, and the newer style that started — so the
+  // ⚠ warning reads as a real status, not a suspected bug.
+  const pendingMessage = (o: any) => {
+    const oldStyle = o.style || "previous style";
+    const qty = formatNumber(o.pending_quantity || 0);
+    return o.active_style_name
+      ? `Style ${oldStyle}: ${qty} pcs not yet QC-passed while ${o.active_style_name} has started on this line.`
+      : `Style ${oldStyle}: ${qty} pcs not yet QC-passed while a newer style has started on this line.`;
+  };
   const getSizeValue = (item: any) => item?.size || "-";
   const getColorValue = (item: any) => item?.color || "-";
 
@@ -772,9 +785,10 @@ export function ProductionReportTable({
                                         Pending {formatNumber(order.pending_quantity || 0)} pcs
                                       </div>
                                       <div className="text-muted-foreground">
-                                        {order.remarks
-                                          ? order.remarks.replace(/\s*\|\s*/g, " · ")
-                                          : "New style started on this line · Manual completion required"}
+                                        {pendingMessage(order)}
+                                        {order.needs_manual_complete
+                                          ? " Mark it complete to clear."
+                                          : ""}
                                       </div>
                                     </TooltipContent>
                                   </Tooltip>
@@ -784,9 +798,10 @@ export function ProductionReportTable({
                                         Pending {formatNumber(order.pending_quantity || 0)} pcs
                                       </div>
                                       <div className="text-xs text-muted-foreground">
-                                        {order.remarks
-                                          ? order.remarks.replace(/\s*\|\s*/g, " · ")
-                                          : "New style started on this line · Manual completion required"}
+                                        {pendingMessage(order)}
+                                        {order.needs_manual_complete
+                                          ? " Mark it complete to clear."
+                                          : ""}
                                       </div>
                                     </DropdownMenuLabel>
                                     <DropdownMenuSeparator />
