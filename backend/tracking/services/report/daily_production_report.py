@@ -687,7 +687,26 @@ def _build_order_row(
     # selected date). This removes duplicate sewing-line rows once the old
     # style is finished, and makes past-date reports hide styles that were
     # already complete before the selected date.
-    if is_style_complete(cumulative_input, cumulative_output) and not is_hidden:
+    #
+    # EXCEPTION (Option b): the line's *current* active style is never auto-hidden
+    # by this completeness rule. When an active style's currently-fed batch is
+    # momentarily 100% sewing-QC passed (cumulative_output >= cumulative_input)
+    # while the order is still far from its ordered quantity, the old behaviour
+    # made the live run vanish from the DPR for as long as feeding paused (days,
+    # in practice). The active style stays visible; older fully-output styles
+    # still auto-hide as before. A manual completion still hides it — that check
+    # (is_hidden) runs earlier, above, BEFORE this guard, so a manually-completed
+    # active style is dropped and never reaches here. is_style_complete() and
+    # line_visibility's shared hide-set are unchanged.
+    is_active_style = (
+        active_style_id is not None
+        and getattr(order, "style_id", None) == active_style_id
+    )
+    if (
+        is_style_complete(cumulative_input, cumulative_output)
+        and not is_hidden
+        and not is_active_style
+    ):
         return None
 
     # --- Parts production keyed by style part name ---

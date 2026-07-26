@@ -18,6 +18,7 @@ from tracking.tests.conftest import (
     StyleFactory,
     BuyerFactory,
     DefectFactory,
+    PartFactory,
 )
 
 
@@ -479,3 +480,106 @@ class TestDailyProductionReport:
         assert data["summary"]["average_dhu_percentage"] == 0.0
         assert data["production_lines"] == []  # No lines with data
         assert data["orders"] == []  # No orders with data
+
+
+# ---------------------------------------------------------------------------
+# Option (b): the line's active style is never auto-hidden by the completeness
+# rule, even when its fed batch is momentarily 100% sewing-QC passed. Manual
+# completion still hides it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestActiveStyleNotAutoHidden:
+    """A caught-up active style (output == input < order.quantity) must remain
+    visible on today's DPR; a manually-completed one must still hide."""
+
+    def _make_caught_up_active_style(self, line, quantity=100, fed=10):
+        """One order on `line` whose entire fed batch (input=fed) has passed
+        sewing QC (output=fed), with fed < quantity. It is the line's active
+        style (its only / newest issued bundle)."""
+        from django.utils import timezone
+        from tracking.models import Scanner, QualityCheck, Scan, Bundle
+        from tracking.models.constants import (
+            ScannerType,
+            QualityCheckCheckpoint,
+            ScanEventType,
+        )
+
+        qc_scanner = Scanner.objects.create(
+            name="QC",
+            scanner_type=ScannerType.SEWING_QC_CHECK,
+            production_line=line,
+        )
+        part = PartFactory()
+        style = StyleFactory()
+        order = OrderFactory(style=style, quantity=quantity)
+
+        bundle = BundleFactory(
+            order=order, part=part, garment_quantity=fed, assigned_sewing_line=line
+        )
+        Bundle.objects.filter(pk=bundle.pk).update(issued_at=timezone.now())
+
+        garments = list(order.garments.order_by("sequence_number")[:fed])
+        assert len(garments) == fed, "bundle should auto-create garments"
+        for g in garments:
+            g.sewing_line = line
+            g.status = GarmentStatus.SEWING_QC_PASS
+            g.save(update_fields=["sewing_line", "status"])
+            QualityCheck.objects.create(
+                garment=g,
+                status=QualityCheckStatus.PASS,
+                checkpoint=QualityCheckCheckpoint.SEWING_QC,
+            )
+            Scan.objects.create(
+                garment=g,
+                scanner=qc_scanner,
+                event_type=ScanEventType.SEWING_QUALITY_CHECK,
+            )
+        return order
+
+    def _row_for(self, report_data, order_id):
+        for line_block in report_data:
+            for row in line_block.get("orders", []):
+                if row["order_id"] == order_id:
+                    return row
+        return None
+
+    def test_caught_up_active_style_still_shown(self):
+        from tracking.services.report.daily_production_report import (
+            get_daily_production_report_data,
+        )
+
+        line = ProductionLineFactory(line_type=LineType.SEWING)
+        order = self._make_caught_up_active_style(line, quantity=100, fed=10)
+
+        data = get_daily_production_report_data(production_line_id=line.id)
+        row = self._row_for(data, order.id)
+
+        # output == input (10 == 10) so is_style_complete is True, but the style
+        # is the line's active run and output (10) < order.quantity (100): the
+        # row must NOT be auto-hidden.
+        assert row is not None, "active style must stay visible when caught up"
+        assert row["input"] == 10
+        assert row["output"]["cumulative"] == 10
+        assert row["is_hidden"] is False
+        # It's the active style itself, so it is not a pending-transition row.
+        assert row["is_pending_transition"] is False
+
+    def test_caught_up_active_style_manual_completion_still_hides(self):
+        from tracking.models import LineStyleCompletion
+        from tracking.services.report.daily_production_report import (
+            get_daily_production_report_data,
+        )
+
+        line = ProductionLineFactory(line_type=LineType.SEWING)
+        order = self._make_caught_up_active_style(line, quantity=100, fed=10)
+
+        # Manual completion must win over the active-style guard: the manual-hide
+        # check runs before the completeness guard.
+        LineStyleCompletion.objects.create(production_line=line, order=order)
+
+        data = get_daily_production_report_data(production_line_id=line.id)
+        assert self._row_for(data, order.id) is None, (
+            "a manually-completed active style must still be hidden"
+        )
