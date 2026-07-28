@@ -77,6 +77,7 @@ from .scan import (  # noqa
     sewing_qc_daily_summary,
     sewing_qc_scan,
     sewing_qc_info,
+    finishing_qc_daily_summary,
     finishing_qc_scan,
     finishing_qc_info,
 )

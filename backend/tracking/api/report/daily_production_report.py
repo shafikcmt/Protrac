@@ -228,8 +228,20 @@ def _generate_summary(production_lines_data):
             packed_data = order_data.get("packed", {}) or {}
             total_packed += packed_data.get("day", 0)
 
+    # Count only lines that actually have visible (non-hidden) rows. The response
+    # now carries every sewing line, including empty ones, so len() here would
+    # otherwise report the number of lines that exist rather than the number
+    # producing anything.
+    lines_with_data = sum(
+        1
+        for line_data in production_lines_data
+        if any(
+            not o.get("is_hidden") for o in (line_data.get("orders") or [])
+        )
+    )
+
     return {
-        "total_production_lines": len(production_lines_data),
+        "total_production_lines": lines_with_data,
         "total_orders": total_orders,
         "total_order_quantity": total_quantity,
         "daily_input": total_input,

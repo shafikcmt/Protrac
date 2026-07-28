@@ -1,5 +1,6 @@
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from tracking.models import Scanner, Scan, PartInventory
 from tracking.models.constants import (
@@ -205,18 +206,22 @@ class TestPartReceiveScan:
         """Test part receive info endpoint."""
         authenticated_client.force_authenticate(user=setup_data["user"])
 
-        # Create some scans for history
+        # Create some scans for history. issued_at must be set alongside
+        # ISSUED_TO_SEWING (as the real issue flow does) — the line's active
+        # style is derived from the latest issued_at, and history is scoped to it.
         bundle1 = BundleFactory(
             order=setup_data["order"],
             part=setup_data["part"],
             status=BundleStatus.ISSUED_TO_SEWING,
             assigned_sewing_line=setup_data["sewing_line"],
+            issued_at=timezone.now(),
         )
         bundle2 = BundleFactory(
             order=setup_data["order"],
             part=setup_data["part"],
             status=BundleStatus.ISSUED_TO_SEWING,
             assigned_sewing_line=setup_data["sewing_line"],
+            issued_at=timezone.now(),
         )
 
         Scan.objects.create(
@@ -250,12 +255,14 @@ class TestPartReceiveScan:
             part=setup_data["part"],
             status=BundleStatus.ISSUED_TO_SEWING,
             assigned_sewing_line=setup_data["sewing_line"],
+            issued_at=timezone.now(),
         )
         bundle2 = BundleFactory(
             order=setup_data["order"],
             part=different_part,
             status=BundleStatus.ISSUED_TO_SEWING,
             assigned_sewing_line=setup_data["sewing_line"],
+            issued_at=timezone.now(),
         )
 
         Scan.objects.create(

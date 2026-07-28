@@ -85,22 +85,30 @@ def process_finishing_qc_scan(
     # Validate tracking code and get garment
     garment = _validate_garment_tracking_code(tracking_code)
 
-    # Handle different scenarios based on current status
+    # Handle different scenarios based on current status. Re-evaluation is now
+    # detected automatically from the garment's QC history — no manual flag,
+    # mirroring the sewing-QC scan: a garment previously failed or sent to rework
+    # at finishing can simply be re-scanned, and when it passes it counts as
+    # output like any other pass.
     if garment.status == GarmentStatus.SEWING_QC_PASS:
-        # First finishing QC check. Continue processing.
-        pass
+        # First finishing QC check.
+        is_reevaluation = False
 
     elif garment.status in [
-        GarmentStatus.FINISHING_QC_PASS,
         GarmentStatus.FINISHING_QC_FAIL,
         GarmentStatus.FINISHING_QC_REWORK,
     ]:
-        # Already QC'd garment. If not reevaluation, raise error.
-        if not is_reevaluation:
-            raise ValueError(
-                f"Garment already processed (status: {garment.status}). "
-                "Use reevaluation flag if this is intentional."
-            )
+        # Re-QC of a defective garment: always allowed, auto-flagged as a
+        # re-evaluation. The `is_reevaluation` request param is ignored.
+        is_reevaluation = True
+
+    elif garment.status == GarmentStatus.FINISHING_QC_PASS:
+        # Already passed and counted as output. Block a re-scan so output/DHU
+        # totals are never double-counted.
+        raise ValueError(
+            f"Garment already passed finishing QC (status: {garment.status}). "
+            "It has already been counted as output."
+        )
 
     else:
         raise ValueError(

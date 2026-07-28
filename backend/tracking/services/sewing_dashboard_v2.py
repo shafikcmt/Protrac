@@ -233,11 +233,15 @@ def _apply_active_only_by_delivery(qs, delivery_field_path: str, active_only: bo
 
     t = today()
     # Null delivery_date = no deadline entered yet → treat as still-active
-    # (include it). Only orders whose delivery_date has clearly passed
-    # (<= today) are excluded as finished/delivered.
+    # (include it). Only orders whose delivery_date has *clearly* passed
+    # (strictly before today) are excluded as finished/delivered.
+    #
+    # Today itself is INCLUDED — a delivery date is a deadline, not an exclusion
+    # date. Keep in step with the daily production report's copy of this rule
+    # (tracking/services/report/daily_production_report.py).
     return qs.filter(
         Q(**{f"{delivery_field_path}__isnull": True})
-        | Q(**{f"{delivery_field_path}__gt": t})
+        | Q(**{f"{delivery_field_path}__gte": t})
     )
 
 
@@ -258,14 +262,13 @@ def _exclude_completed_orders(
     if not active_only:
         return qs
 
-    # Single source of truth for manual completions (line_visibility). Kept to
-    # the manual set here on purpose: this helper is invoked many times per
-    # dashboard request, so the heavier auto-hide aggregation is intentionally
-    # not run on this hot path. Fully-output styles already drop out of the
-    # live (pending-bundle based) slides on their own.
-    from tracking.services.line_visibility import get_manual_completed_order_ids
+    # Single source of truth for completions (line_visibility). This is now a
+    # plain indexed lookup of recorded MANUAL/AUTO rows — the heavy per-request
+    # input/output aggregation this helper used to avoid no longer exists, so
+    # this hot path gets the full hide-set rather than just the manual subset.
+    from tracking.services.line_visibility import get_completed_order_ids
 
-    completed_order_ids = get_manual_completed_order_ids(production_line)
+    completed_order_ids = get_completed_order_ids(production_line)
 
     return qs.exclude(**{f"{order_field_path}__in": completed_order_ids})
 
@@ -1681,11 +1684,17 @@ def get_sewing_dashboard_v2_data(
     data: List[Dict[str, Any]] = []
 
     # ── Single source of truth for Total Input / active style ────────────
-    # V3's WIP "Total Input" must match the Daily Production Report 1:1. We no
-    # longer re-derive input here (which diverged on multi-style lines). Instead
-    # we pull the DPR rows once and read the ACTIVE-style figures straight from
-    # them. Pending OLD styles (DPR's "pending transition" rows) are kept OUT of
-    # the main number and surfaced separately as a badge.
+    # V3's WIP "Total Input" is derived from the Daily Production Report rows so
+    # it can never diverge on multi-style lines. ACTIVE here means "not hidden"
+    # — exactly the shared visibility rule (manual completion ∪ Input==Output,
+    # see line_visibility.get_inactive_order_ids_for_line).
+    #
+    # A pending OLD style (a newer style was issued while this one is still in
+    # progress) is NOT excluded: merely issuing the next style must never blank
+    # an in-progress style off the board. It stays in Total Input / Output / WIP
+    # and is ADDITIONALLY surfaced as an overlap badge. Note this means the
+    # headline total is the sum over every live style on the line, so on a
+    # transition line it will exceed the DPR's single active-style row.
     from tracking.services.report import get_daily_production_report_data
     from tracking.services.line_visibility import get_active_style_id_for_line
 
@@ -1740,33 +1749,43 @@ def get_sewing_dashboard_v2_data(
         else:
             _day_start, day_end = day_range(date)
 
-        # ── Active-style Total Input / Output, read from the DPR rows (1:1) ──
-        # The DPR is the single source of truth. Active rows = the current style
-        # (and its sibling sizes/colors). Pending OLD styles are DPR's
-        # "pending transition" rows and must NOT be folded into Total Input.
+        # ── Live Total Input / Output, read from the DPR rows ────────────────
+        # The DPR is the single source of truth. Live rows = every order still
+        # visible under the shared rule (not hidden). Pending OLD styles are
+        # included: they are still being produced, so their input/output belongs
+        # in the line's WIP. They are flagged separately for the badge below.
         _dpr_rows = _dpr_orders_by_line.get(int(line.id), [])
-        _active_rows = [
-            r for r in _dpr_rows
-            if not r.get("is_hidden") and not r.get("is_pending_transition")
-        ]
+        _active_rows = [r for r in _dpr_rows if not r.get("is_hidden")]
         _pending_old_rows = [
             r for r in _dpr_rows
             if r.get("is_pending_transition") and not r.get("is_hidden")
         ]
 
-        # Main number = active/current style only (matches the DPR row exactly).
+        # Main number = every live style on the line.
         total_input_upto = sum(int(r.get("input", 0) or 0) for r in _active_rows)
         total_output_upto = sum(
             int((r.get("output") or {}).get("cumulative", 0) or 0)
             for r in _active_rows
         )
 
-        active_style_name = next(
-            (r.get("style") for r in _active_rows if r.get("style")), None
-        )
         active_style_id = get_active_style_id_for_line(
             line, as_of_date=_dpr_report_date
         )
+        # Every live style on the line, newest-issued first so the primary chip
+        # and the back-compat scalar stay stable regardless of DPR row order.
+        # A pending-transition row is by definition NOT the newest style, which
+        # makes that flag the discriminator (DPR rows carry no style_id).
+        _seen_styles = set()
+        active_style_names: List[str] = []
+        for r in sorted(
+            _active_rows, key=lambda r: 1 if r.get("is_pending_transition") else 0
+        ):
+            name = r.get("style")
+            if name and name not in _seen_styles:
+                _seen_styles.add(name)
+                active_style_names.append(name)
+        # Back-compat scalar: the newest-issued (primary) style.
+        active_style_name = active_style_names[0] if active_style_names else None
 
         # Old style still pending alongside the new active style -> badge only,
         # never counted in total_input.
@@ -1777,8 +1796,8 @@ def get_sewing_dashboard_v2_data(
             int(r.get("pending_quantity", 0) or 0) for r in _pending_old_rows
         )
 
-        # Active-style order ids + assembly figures, straight from the same DPR
-        # rows. Assembly now shares the active-style scope used by Total Input.
+        # Live order ids + assembly figures, straight from the same DPR rows.
+        # Assembly shares the same scope as Total Input.
         _active_order_ids = [
             int(r["order_id"]) for r in _active_rows if r.get("order_id") is not None
         ]
@@ -1899,20 +1918,22 @@ def get_sewing_dashboard_v2_data(
                 "production_line_id": line.id,
                 "production_line_name": line.name,
 
-                # WIP SUMMARY (active style only — matches DPR row 1:1)
+                # WIP SUMMARY (every live style on the line — DPR non-hidden rows)
                 "total_input": int(total_input_upto),
                 "total_output": int(total_output_upto),
                 "line_wip": int(line_wip_calc),
 
-                # Active style + pending-old-style badge (source of truth = DPR)
+                # Active styles + pending-old-style badge (source of truth = DPR)
                 "active_style_id": (
                     int(active_style_id) if active_style_id is not None else None
                 ),
+                # Back-compat scalar = primary (newest-issued) style.
                 "active_style_name": active_style_name,
+                "active_style_names": active_style_names,
                 "pending_old_style_count": int(pending_old_style_count),
                 "pending_old_pending_qty": int(pending_old_pending_qty),
 
-                # Assembly (active style only — matches DPR assembly_input)
+                # Assembly (every live style — matches the Total Input scope)
                 "assembly_input_day": int(assembly_input_day),
                 "assembly_input_cumulative": int(assembly_input_cumulative),
 

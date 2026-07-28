@@ -19,10 +19,14 @@ class LineStyleCompletionSerializer(serializers.ModelSerializer):
             "order_detail",
             "completed_by",
             "completed_by_name",
+            "source",
             "notes",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at", "completed_by"]
+        # `source` is read-only: a completion created through this endpoint is by
+        # definition an operator action, so it keeps the model default (MANUAL).
+        # AUTO rows are only ever written by tracking.services.line_completion.
+        read_only_fields = ["id", "created_at", "completed_by", "source"]
 
     def get_order_detail(self, obj):
         order = obj.order

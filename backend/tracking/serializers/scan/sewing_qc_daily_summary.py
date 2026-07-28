@@ -38,6 +38,31 @@ class SewingQCOrderGroupSerializer(serializers.Serializer):
     garments_grid = SewingQCGarmentCellSerializer(many=True)
 
 
+class SewingQCOverlapOrderSerializer(serializers.Serializer):
+    """One older-style order still in progress under a style-overlap alert."""
+
+    order_id = serializers.IntegerField()
+    order_number = serializers.CharField()
+    style = serializers.CharField(allow_null=True)
+    size = serializers.CharField(allow_null=True)
+    pending_quantity = serializers.IntegerField()
+    completion_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="LineStyleCompletion id if already manually hidden, else null",
+    )
+
+
+class SewingQCStyleOverlapAlertSerializer(serializers.Serializer):
+    """Alert: a newer style was issued on the line while older orders are still
+    in progress. Those orders are NOT auto-hidden — this only flags the overlap."""
+
+    production_line_id = serializers.IntegerField()
+    line = serializers.CharField()
+    new_style_id = serializers.IntegerField(allow_null=True)
+    new_style = serializers.CharField(allow_null=True)
+    in_progress_orders = SewingQCOverlapOrderSerializer(many=True)
+
+
 class SewingQCHourSerializer(serializers.Serializer):
     """One hourly bucket: per-hour target vs QC-pass actual."""
 
@@ -67,3 +92,4 @@ class SewingQCDailySummaryResponseSerializer(serializers.Serializer):
     garments_grid = SewingQCGarmentCellSerializer(many=True)
     order_groups = SewingQCOrderGroupSerializer(many=True)
     hourly = SewingQCHourSerializer(many=True)
+    style_overlap_alert = SewingQCStyleOverlapAlertSerializer(allow_null=True)

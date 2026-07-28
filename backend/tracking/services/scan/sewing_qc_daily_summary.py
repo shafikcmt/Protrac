@@ -205,7 +205,10 @@ def get_sewing_qc_daily_summary(
     # visibility) are excluded from the groups; the line-wide tallies above are
     # left untouched. active_order + the flat garments_grid mirror order_groups[0]
     # for backward compatibility with the single-order shape.
-    from tracking.services.line_visibility import get_inactive_order_ids_for_line
+    from tracking.services.line_visibility import (
+        get_inactive_order_ids_for_line,
+        get_style_overlap_alert,
+    )
 
     completed_order_ids = list(
         get_inactive_order_ids_for_line(line, as_of_date=summary_date)
@@ -213,6 +216,13 @@ def get_sewing_qc_daily_summary(
     active_orders = _resolve_sewing_qc_active_orders(
         scanner, line, summary_date, completed_order_ids
     )
+
+    # Overlap alert: a newer style was issued on this line while older-style
+    # orders are still in progress. Those older orders are NO LONGER auto-hidden
+    # (they stay in the groups above); we just flag the overlap so the operator/
+    # admin can Mark Complete when the old run is truly finished. None when there
+    # is no overlap.
+    style_overlap_alert = get_style_overlap_alert(line, as_of_date=summary_date)
 
     order_groups = [
         {
@@ -282,4 +292,5 @@ def get_sewing_qc_daily_summary(
         "garments_grid": garments_grid,
         "order_groups": order_groups,
         "hourly": hourly,
+        "style_overlap_alert": style_overlap_alert,
     }

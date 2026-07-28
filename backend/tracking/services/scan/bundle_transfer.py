@@ -3,6 +3,11 @@ from typing import Dict, List, TYPE_CHECKING
 from tracking.models import Bundle, BundleTransfer, Garment
 from tracking.models.constants import BundleStatus
 from tracking.services.scan.bundle_issue import _validate_user_scanner
+from tracking.services.line_completion import (
+    _safely,
+    auto_complete_superseded_styles,
+    clear_auto_completions_for_style,
+)
 
 if TYPE_CHECKING:
     from accounts.models import User
@@ -91,6 +96,8 @@ def transfer_bundles_to_line(
     # All eligible: perform the moves and write one audit row per bundle. The
     # original issued_at is intentionally left unchanged.
     transferred = []
+    touched_lines = set()
+    touched_style_ids = set()
     for bundle in bundles:
         from_line = bundle.assigned_sewing_line
         bundle.assigned_sewing_line = sewing_line
@@ -113,6 +120,19 @@ def transfer_bundles_to_line(
                 "to_line": sewing_line.name,
             }
         )
+        touched_lines.add(sewing_line)
+        if from_line is not None:
+            touched_lines.add(from_line)
+        touched_style_ids.add(getattr(bundle.order, "style_id", None))
+
+    # Re-evaluate auto-completion on both sides of every move. A transfer changes
+    # which styles have input on a line without touching issued_at, so it can both
+    # revive a style on the destination and finish one on the source. Best-effort:
+    # a bookkeeping failure must not roll back the transfer.
+    for style_id in touched_style_ids:
+        _safely(clear_auto_completions_for_style, sewing_line, style_id)
+    for line in touched_lines:
+        _safely(auto_complete_superseded_styles, line)
 
     return {
         "success": True,

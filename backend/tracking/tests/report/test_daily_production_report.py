@@ -7,8 +7,11 @@ from tracking.models.constants import (
     GarmentStatus,
     LineType,
     QualityCheckStatus,
+    QualityCheckCheckpoint,
+    ScannerType,
+    ScanEventType,
 )
-from tracking.models import QualityCheck, LineStyleCompletion
+from tracking.models import QualityCheck, LineStyleCompletion, Bundle, Scanner, Scan
 from tracking.tests.conftest import (
     ProductionLineFactory,
     OrderFactory,
@@ -18,7 +21,49 @@ from tracking.tests.conftest import (
     StyleFactory,
     BuyerFactory,
     DefectFactory,
+    PartFactory,
 )
+
+
+# ---------------------------------------------------------------------------
+# Helpers — the current DPR keys off real bundle/garment activity (a
+# PartInventory alone no longer produces a row), so these build the minimal
+# activity needed for an order to appear, and real sewing-QC output.
+# ---------------------------------------------------------------------------
+
+
+def _issue_bundle(order, line, quantity):
+    """Give `order` an issued bundle on `line` (input = quantity). The bundle
+    auto-creates `quantity` garments. Returns the bundle."""
+    bundle = BundleFactory(
+        order=order, assigned_sewing_line=line, garment_quantity=quantity
+    )
+    Bundle.objects.filter(pk=bundle.pk).update(issued_at=timezone.now())
+    return bundle
+
+
+def _pass_sewing_qc(garments, line):
+    """Mark each garment as sewing-QC passed on `line` (counts as DPR output)."""
+    scanner = Scanner.objects.create(
+        name="QC", scanner_type=ScannerType.SEWING_QC_CHECK, production_line=line
+    )
+    for g in garments:
+        g.sewing_line = line
+        g.status = GarmentStatus.SEWING_QC_PASS
+        g.save(update_fields=["sewing_line", "status"])
+        QualityCheck.objects.create(
+            garment=g,
+            status=QualityCheckStatus.PASS,
+            checkpoint=QualityCheckCheckpoint.SEWING_QC,
+        )
+        Scan.objects.create(
+            garment=g, scanner=scanner, event_type=ScanEventType.SEWING_QUALITY_CHECK
+        )
+
+
+def _order_rows(response):
+    """Flatten all order rows across production lines in a DPR response."""
+    return [o for pl in response.data["production_lines"] for o in pl["orders"]]
 
 
 @pytest.mark.django_db
@@ -26,20 +71,14 @@ class TestDailyProductionReport:
     """Test suite for daily production report endpoint."""
 
     def test_response_structure_validation(self, authenticated_client):
-        """Test that the API response has the correct structure."""
-        # Create test data
+        """Test that the API response has the current structure."""
+        # Create test data. The current DPR keys off bundle/garment activity,
+        # so give the order an issued bundle to make it appear.
         sewing_line = ProductionLineFactory(line_type=LineType.SEWING)
         buyer = BuyerFactory(name="Test Buyer")
         style = StyleFactory(name="Test Style", buyer=buyer)
         order = OrderFactory(quantity=100, style=style)
-
-        # Create some production data
-        PartInventoryFactory(
-            production_line=sewing_line,
-            order=order,
-            total_quantity=50,
-            issued_quantity=10,
-        )
+        _issue_bundle(order, sewing_line, quantity=10)
 
         url = reverse("tracking:daily-production-report")
         response = authenticated_client.get(url)
@@ -48,93 +87,84 @@ class TestDailyProductionReport:
         data = response.data
 
         # Check top-level structure
-        assert "date" in data
-        assert "summary" in data
-        assert "production_lines" in data
-        assert "orders" in data
+        for field in [
+            "report_date",
+            "company_name",
+            "report_title",
+            "production_lines",
+            "summary",
+        ]:
+            assert field in data
 
         # Check summary structure
         summary = data["summary"]
         required_summary_fields = [
-            "total_orders",
             "total_production_lines",
-            "total_parts_produced",
-            "total_assembly_output",
-            "total_finishing_output",
-            "average_dhu_percentage",
-            "total_inspection_completed",
-            "total_packing_completed",
+            "total_orders",
+            "total_order_quantity",
+            "daily_input",
+            "daily_output",
+            "daily_inspection",
+            "daily_packed",
+            "overall_efficiency",
         ]
         for field in required_summary_fields:
             assert field in summary
 
         # Check production lines structure
         assert isinstance(data["production_lines"], list)
-        if data["production_lines"]:
-            line_data = data["production_lines"][0]
-            required_line_fields = [
-                "line_id",
-                "line_name",
-                "line_type",
-                "working_hours",
-                "parts_produced",
-                "assembly_output",
-                "finishing_output",
-                "dhu_percentage",
-                "inspection_completed",
-                "packing_completed",
-            ]
-            for field in required_line_fields:
-                assert field in line_data
+        assert data["production_lines"], "expected one line with activity"
+        line_data = data["production_lines"][0]
+        for field in ["production_line_id", "production_line_name", "orders"]:
+            assert field in line_data
 
-        # Check orders structure
-        assert isinstance(data["orders"], list)
-        if data["orders"]:
-            order_data = data["orders"][0]
-            required_order_fields = [
-                "order_id",
-                "order_number",
-                "buyer",
-                "style",
-                "order_quantity",
-                "parts_produced",
-                "assembly_output",
-                "finishing_output",
-                "dhu_percentage",
-                "inspection_completed",
-                "packing_completed",
-                "parts_breakdown",
-            ]
-            for field in required_order_fields:
-                assert field in order_data
+        # Check order-row structure
+        assert isinstance(line_data["orders"], list)
+        assert line_data["orders"], "expected one order row"
+        order_data = line_data["orders"][0]
+        required_order_fields = [
+            "order_id",
+            "production_line_id",
+            "line",
+            "buyer",
+            "style",
+            "order_quantity",
+            "working_days",
+            "input",
+            "output",
+            "inspection",
+            "packed",
+            "dhu_day",
+            "dhu_average",
+        ]
+        for field in required_order_fields:
+            assert field in order_data
 
     def test_date_filtering(self, authenticated_client):
-        """Test filtering by specific date."""
+        """Test filtering by specific date (param is report_date)."""
         sewing_line = ProductionLineFactory(line_type=LineType.SEWING)
         order = OrderFactory(quantity=100)
 
-        # Create inventory for today
-        PartInventoryFactory(
-            production_line=sewing_line,
-            order=order,
-            total_quantity=50,
-        )
+        # Activity happens today (bundle issued now)
+        _issue_bundle(order, sewing_line, quantity=10)
 
         # Test with specific date (today)
         today = date.today()
         url = reverse("tracking:daily-production-report")
-        response = authenticated_client.get(url, {"date": today.isoformat()})
+        response = authenticated_client.get(url, {"report_date": today.isoformat()})
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["date"] == today.isoformat()
+        assert str(response.data["report_date"]) == today.isoformat()
 
-        # Test with yesterday (should have no data)
+        # Test with yesterday (no activity that day)
         yesterday = today - timedelta(days=1)
-        response = authenticated_client.get(url, {"date": yesterday.isoformat()})
+        response = authenticated_client.get(
+            url, {"report_date": yesterday.isoformat()}
+        )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["date"] == yesterday.isoformat()
-        # Summary should show zero values for yesterday
+        assert str(response.data["report_date"]) == yesterday.isoformat()
+        # Summary should show zero orders for yesterday
         summary = response.data["summary"]
         assert summary["total_orders"] == 0
 
@@ -150,13 +180,9 @@ class TestDailyProductionReport:
         order1 = OrderFactory(quantity=100)
         order2 = OrderFactory(quantity=200)
 
-        # Create inventory for both lines
-        PartInventoryFactory(
-            production_line=sewing_line1, order=order1, total_quantity=50
-        )
-        PartInventoryFactory(
-            production_line=sewing_line2, order=order2, total_quantity=75
-        )
+        # Give each order issued-bundle activity on its line
+        _issue_bundle(order1, sewing_line1, quantity=10)
+        _issue_bundle(order2, sewing_line2, quantity=10)
 
         url = reverse("tracking:daily-production-report")
 
@@ -169,10 +195,10 @@ class TestDailyProductionReport:
         # Should only include line 1
         production_lines = response.data["production_lines"]
         assert len(production_lines) == 1
-        assert production_lines[0]["line_id"] == sewing_line1.id
+        assert production_lines[0]["production_line_id"] == sewing_line1.id
 
     def test_buyer_filtering(self, authenticated_client):
-        """Test filtering by buyer."""
+        """Test filtering by buyer (param is buyer_id)."""
         buyer1 = BuyerFactory(name="Buyer A")
         buyer2 = BuyerFactory(name="Buyer B")
 
@@ -183,26 +209,22 @@ class TestDailyProductionReport:
         order2 = OrderFactory(style=style2, quantity=200)
 
         sewing_line = ProductionLineFactory(line_type=LineType.SEWING)
-        PartInventoryFactory(
-            production_line=sewing_line, order=order1, total_quantity=50
-        )
-        PartInventoryFactory(
-            production_line=sewing_line, order=order2, total_quantity=75
-        )
+        _issue_bundle(order1, sewing_line, quantity=10)
+        _issue_bundle(order2, sewing_line, quantity=10)
 
         url = reverse("tracking:daily-production-report")
 
         # Test filtering by buyer 1
-        response = authenticated_client.get(url, {"buyer": buyer1.name})
+        response = authenticated_client.get(url, {"buyer_id": buyer1.id})
         assert response.status_code == status.HTTP_200_OK
 
         # Should only include orders from buyer 1
-        orders = response.data["orders"]
+        orders = _order_rows(response)
         assert len(orders) == 1
         assert orders[0]["buyer"] == buyer1.name
 
     def test_style_filtering(self, authenticated_client):
-        """Test filtering by style."""
+        """Test filtering by style (param is style_id)."""
         style1 = StyleFactory(name="Style A")
         style2 = StyleFactory(name="Style B")
 
@@ -210,81 +232,78 @@ class TestDailyProductionReport:
         order2 = OrderFactory(style=style2, quantity=200)
 
         sewing_line = ProductionLineFactory(line_type=LineType.SEWING)
-        PartInventoryFactory(
-            production_line=sewing_line, order=order1, total_quantity=50
-        )
-        PartInventoryFactory(
-            production_line=sewing_line, order=order2, total_quantity=75
-        )
+        _issue_bundle(order1, sewing_line, quantity=10)
+        _issue_bundle(order2, sewing_line, quantity=10)
 
         url = reverse("tracking:daily-production-report")
 
         # Test filtering by style 1
-        response = authenticated_client.get(url, {"style": style1.name})
+        response = authenticated_client.get(url, {"style_id": style1.id})
         assert response.status_code == status.HTTP_200_OK
 
         # Should only include orders from style 1
-        orders = response.data["orders"]
+        orders = _order_rows(response)
         assert len(orders) == 1
         assert orders[0]["style"] == style1.name
 
     def test_production_metrics_calculation(self, authenticated_client):
-        """Test that production metrics are calculated correctly."""
+        """Test that production metrics map to the current row fields.
+
+        input  = issued bundle quantity
+        output = distinct garments that passed sewing QC (scan + PASS)
+        packed = garments that passed finishing QC (finishing_completed_at set)
+        """
         sewing_line = ProductionLineFactory(line_type=LineType.SEWING)
-        finishing_line = ProductionLineFactory(line_type=LineType.FINISHING)
         order = OrderFactory(quantity=100)
 
-        # Create parts production
-        PartInventoryFactory(
-            production_line=sewing_line,
-            order=order,
-            total_quantity=80,  # Parts produced
-            issued_quantity=60,  # Parts issued for assembly
-        )
+        # input = 5 (issued bundle auto-creates 5 garments)
+        _issue_bundle(order, sewing_line, quantity=5)
+        garments = list(order.garments.order_by("sequence_number")[:5])
 
-        # Create garments for assembly and finishing output
-        GarmentFactory(
-            order=order, sewing_line=sewing_line, status=GarmentStatus.SEWING_QC_PASS
-        )
-        GarmentFactory(
-            order=order,
-            sewing_line=sewing_line,
-            finishing_line=finishing_line,
-            status=GarmentStatus.FINISHING_QC_PASS,
-        )
-        GarmentFactory(
-            order=order,
-            sewing_line=sewing_line,
-            finishing_line=finishing_line,
-            status=GarmentStatus.PACKED,
-        )
+        # output = 3 garments passed sewing QC
+        _pass_sewing_qc(garments[:3], sewing_line)
+
+        # packed = 2 garments finished finishing QC
+        for g in garments[3:5]:
+            g.sewing_line = sewing_line
+            g.status = GarmentStatus.FINISHING_QC_PASS
+            g.finishing_completed_at = timezone.now()
+            g.save(
+                update_fields=["sewing_line", "status", "finishing_completed_at"]
+            )
 
         url = reverse("tracking:daily-production-report")
         response = authenticated_client.get(url)
 
         assert response.status_code == status.HTTP_200_OK
 
-        # Check order-level metrics
-        order_data = response.data["orders"][0]
-        assert order_data["parts_produced"] == 80
-        assert order_data["assembly_output"] == 3  # All garments passed sewing
-        assert order_data["finishing_output"] == 2  # 2 garments reached finishing
-        assert order_data["packing_completed"] == 1  # 1 garment packed
+        # Check order-level metrics in the current shape
+        order_data = _order_rows(response)[0]
+        assert order_data["order_quantity"] == 100
+        assert order_data["input"] == 5
+        assert order_data["output"]["cumulative"] == 3
+        assert order_data["packed"]["cumulative"] == 2
 
     def test_dhu_calculation_in_report(self, authenticated_client):
-        """Test that DHU is calculated correctly in the daily report."""
+        """Test that DHU is calculated correctly in the daily report.
+
+        `QualityCheck.defects` is a plain M2M, so adding the same defect twice
+        stores a single relation. Inspected garments = 3, distinct defect
+        relations = 2 (qc1 stitching + qc3 stitching) -> DHU = 2/3*100 = 66.67%.
+        """
         sewing_line = ProductionLineFactory(line_type=LineType.SEWING)
         order = OrderFactory(quantity=100)
 
         # Create defects
         stitching_defect = DefectFactory(name="Stitching Issue")
 
-        # Create garments with QC checks and defects
+        # Create garments with QC checks and defects (on this sewing line so the
+        # order registers and the QC counts against the line)
         garment1 = GarmentFactory(order=order, sewing_line=sewing_line)
         garment2 = GarmentFactory(order=order, sewing_line=sewing_line)
         garment3 = GarmentFactory(order=order, sewing_line=sewing_line)
 
-        # QC check 1: Failed with 2 defects
+        # QC check 1: Failed — adding the same defect twice = 1 relation (M2M)
         qc1 = QualityCheck.objects.create(
             garment=garment1,
             status=QualityCheckStatus.FAIL,
@@ -304,29 +323,15 @@ class TestDailyProductionReport:
         )
         qc3.defects.add(stitching_defect)
 
-        # Create inventory
-        PartInventoryFactory(
-            production_line=sewing_line,
-            order=order,
-            total_quantity=50,
-        )
-
         url = reverse("tracking:daily-production-report")
         response = authenticated_client.get(url)
 
         assert response.status_code == status.HTTP_200_OK
 
-        # Check DHU calculation
-        order_data = response.data["orders"][0]
-        assert order_data["dhu_percentage"] == 100.0  # (3 defects / 3 units) * 100
-
-        # Check line-level DHU
-        sewing_line_data = next(
-            line
-            for line in response.data["production_lines"]
-            if line["line_id"] == sewing_line.id
-        )
-        assert sewing_line_data["dhu_percentage"] == 100.0
+        # 2 distinct defects across 3 inspected garments -> 66.67% (day & average)
+        order_data = _order_rows(response)[0]
+        assert order_data["dhu_day"] == 66.67
+        assert order_data["dhu_average"] == 66.67
 
     def test_empty_data_scenario(self, authenticated_client):
         """Test response when no production data exists."""
@@ -340,27 +345,23 @@ class TestDailyProductionReport:
         assert data["summary"]["total_orders"] == 0
         assert data["summary"]["total_production_lines"] == 0
         assert data["production_lines"] == []
-        assert data["orders"] == []
 
     def test_working_hours_default(self, authenticated_client):
-        """Test that working hours defaults to 8 when not specified."""
+        """Working hours is no longer a hardcoded 8; without a LineTarget for
+        the date the row reports working_hours=None (UI shows '-')."""
         sewing_line = ProductionLineFactory(line_type=LineType.SEWING)
         order = OrderFactory(quantity=100)
 
-        PartInventoryFactory(
-            production_line=sewing_line,
-            order=order,
-            total_quantity=50,
-        )
+        _issue_bundle(order, sewing_line, quantity=10)
 
         url = reverse("tracking:daily-production-report")
         response = authenticated_client.get(url)
 
         assert response.status_code == status.HTTP_200_OK
 
-        # Check that working hours defaults to 8
-        line_data = response.data["production_lines"][0]
-        assert line_data["working_hours"] == 8
+        # No LineTarget configured -> working_hours is None (not a default 8)
+        order_data = _order_rows(response)[0]
+        assert order_data["working_hours"] is None
 
     # ------------------------------------------------------------------
     # include_hidden / manual-completion visibility (Group A)
@@ -474,8 +475,115 @@ class TestDailyProductionReport:
         assert response.status_code == status.HTTP_200_OK
         data = response.data
 
-        # Should handle missing data gracefully
+        # Should handle missing data gracefully (no activity -> no rows shown)
         assert data["summary"]["total_orders"] == 0  # No orders with actual data
-        assert data["summary"]["average_dhu_percentage"] == 0.0
-        assert data["production_lines"] == []  # No lines with data
-        assert data["orders"] == []  # No orders with data
+        assert data["summary"]["overall_efficiency"] == 0.0
+
+        # The line is still listed, with an empty `orders` list. Lines are never
+        # silently omitted — an absent line is indistinguishable from a bug,
+        # which is how the Sewing-5 delivery-date defect went unnoticed.
+        assert [ln["orders"] for ln in data["production_lines"]] == [[]]
+        assert data["summary"]["total_production_lines"] == 0  # none have data
+
+
+# ---------------------------------------------------------------------------
+# Option (b): the line's active style is never auto-hidden by the completeness
+# rule, even when its fed batch is momentarily 100% sewing-QC passed. Manual
+# completion still hides it.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestActiveStyleNotAutoHidden:
+    """A caught-up active style (output == input < order.quantity) must remain
+    visible on today's DPR; a manually-completed one must still hide."""
+
+    def _make_caught_up_active_style(self, line, quantity=100, fed=10):
+        """One order on `line` whose entire fed batch (input=fed) has passed
+        sewing QC (output=fed), with fed < quantity. It is the line's active
+        style (its only / newest issued bundle)."""
+        from django.utils import timezone
+        from tracking.models import Scanner, QualityCheck, Scan, Bundle
+        from tracking.models.constants import (
+            ScannerType,
+            QualityCheckCheckpoint,
+            ScanEventType,
+        )
+
+        qc_scanner = Scanner.objects.create(
+            name="QC",
+            scanner_type=ScannerType.SEWING_QC_CHECK,
+            production_line=line,
+        )
+        part = PartFactory()
+        style = StyleFactory()
+        order = OrderFactory(style=style, quantity=quantity)
+
+        bundle = BundleFactory(
+            order=order, part=part, garment_quantity=fed, assigned_sewing_line=line
+        )
+        Bundle.objects.filter(pk=bundle.pk).update(issued_at=timezone.now())
+
+        garments = list(order.garments.order_by("sequence_number")[:fed])
+        assert len(garments) == fed, "bundle should auto-create garments"
+        for g in garments:
+            g.sewing_line = line
+            g.status = GarmentStatus.SEWING_QC_PASS
+            g.save(update_fields=["sewing_line", "status"])
+            QualityCheck.objects.create(
+                garment=g,
+                status=QualityCheckStatus.PASS,
+                checkpoint=QualityCheckCheckpoint.SEWING_QC,
+            )
+            Scan.objects.create(
+                garment=g,
+                scanner=qc_scanner,
+                event_type=ScanEventType.SEWING_QUALITY_CHECK,
+            )
+        return order
+
+    def _row_for(self, report_data, order_id):
+        for line_block in report_data:
+            for row in line_block.get("orders", []):
+                if row["order_id"] == order_id:
+                    return row
+        return None
+
+    def test_caught_up_active_style_still_shown(self):
+        from tracking.services.report.daily_production_report import (
+            get_daily_production_report_data,
+        )
+
+        line = ProductionLineFactory(line_type=LineType.SEWING)
+        order = self._make_caught_up_active_style(line, quantity=100, fed=10)
+
+        data = get_daily_production_report_data(production_line_id=line.id)
+        row = self._row_for(data, order.id)
+
+        # output == input (10 == 10) so is_style_complete is True, but the style
+        # is the line's active run and output (10) < order.quantity (100): the
+        # row must NOT be auto-hidden.
+        assert row is not None, "active style must stay visible when caught up"
+        assert row["input"] == 10
+        assert row["output"]["cumulative"] == 10
+        assert row["is_hidden"] is False
+        # It's the active style itself, so it is not a pending-transition row.
+        assert row["is_pending_transition"] is False
+
+    def test_caught_up_active_style_manual_completion_still_hides(self):
+        from tracking.models import LineStyleCompletion
+        from tracking.services.report.daily_production_report import (
+            get_daily_production_report_data,
+        )
+
+        line = ProductionLineFactory(line_type=LineType.SEWING)
+        order = self._make_caught_up_active_style(line, quantity=100, fed=10)
+
+        # Manual completion must win over the active-style guard: the manual-hide
+        # check runs before the completeness guard.
+        LineStyleCompletion.objects.create(production_line=line, order=order)
+
+        data = get_daily_production_report_data(production_line_id=line.id)
+        assert self._row_for(data, order.id) is None, (
+            "a manually-completed active style must still be hidden"
+        )

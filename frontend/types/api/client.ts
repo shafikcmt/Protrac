@@ -333,6 +333,43 @@ const PatchedDefectRequest = z
   })
   .partial()
   .passthrough();
+const FinishingQCActiveOrder = z
+  .object({ order_number: z.string(), style: z.string() })
+  .passthrough();
+const FinishingQCGarmentCell = z
+  .object({
+    sequence_number: z.number().int(),
+    tracking_code: z.string(),
+    sewing_status: z.string(),
+    finishing_status: z.string(),
+    finishing_checked_date: z.string().nullable(),
+  })
+  .passthrough();
+const FinishingQCOrderGroup = z
+  .object({
+    order_number: z.string(),
+    style: z.string(),
+    size: z.string(),
+    last_activity_at: z.string(),
+    garments_grid: z.array(FinishingQCGarmentCell),
+  })
+  .passthrough();
+const FinishingQCDailySummaryResponse = z
+  .object({
+    line: z.string(),
+    date: z.string(),
+    total_output: z.number().int(),
+    total_rework: z.number().int(),
+    total_fail: z.number().int(),
+    pass_rate: z.number(),
+    total_inspected: z.number().int(),
+    total_defects: z.number().int(),
+    dhu: z.number(),
+    active_order: FinishingQCActiveOrder.nullable(),
+    garments_grid: z.array(FinishingQCGarmentCell),
+    order_groups: z.array(FinishingQCOrderGroup),
+  })
+  .passthrough();
 const GarmentStatusEnum = z.enum([
   "pending_assembly",
   "issued_for_assembly",
@@ -973,6 +1010,7 @@ const SewingLineDashboardV2 = z
     line_wip: z.number().int(),
     active_style_id: z.number().int().nullish(),
     active_style_name: z.string().nullish(),
+    active_style_names: z.array(z.string()).optional(),
     pending_old_style_count: z.number().int().optional().default(0),
     pending_old_pending_qty: z.number().int().optional().default(0),
     assembly_input_day: z.number().int().optional().default(0),
@@ -1138,6 +1176,25 @@ const SewingQCHour = z
     actual: z.number().int(),
   })
   .passthrough();
+const SewingQCOverlapOrder = z
+  .object({
+    order_id: z.number().int(),
+    order_number: z.string(),
+    style: z.string().nullable(),
+    size: z.string().nullable(),
+    pending_quantity: z.number().int(),
+    completion_id: z.number().int().nullable(),
+  })
+  .passthrough();
+const SewingQCStyleOverlapAlert = z
+  .object({
+    production_line_id: z.number().int(),
+    line: z.string(),
+    new_style_id: z.number().int().nullable(),
+    new_style: z.string().nullable(),
+    in_progress_orders: z.array(SewingQCOverlapOrder),
+  })
+  .passthrough();
 const SewingQCDailySummaryResponse = z
   .object({
     line: z.string(),
@@ -1154,6 +1211,7 @@ const SewingQCDailySummaryResponse = z
     garments_grid: z.array(SewingQCGarmentCell),
     order_groups: z.array(SewingQCOrderGroup),
     hourly: z.array(SewingQCHour),
+    style_overlap_alert: SewingQCStyleOverlapAlert.nullable(),
   })
   .passthrough();
 const Size = z
@@ -1322,6 +1380,10 @@ export const schemas = {
   PaginatedDefectList,
   DefectRequest,
   PatchedDefectRequest,
+  FinishingQCActiveOrder,
+  FinishingQCGarmentCell,
+  FinishingQCOrderGroup,
+  FinishingQCDailySummaryResponse,
   GarmentStatusEnum,
   Garment,
   PaginatedGarmentList,
@@ -1408,6 +1470,8 @@ export const schemas = {
   SewingQCGarmentCell,
   SewingQCOrderGroup,
   SewingQCHour,
+  SewingQCOverlapOrder,
+  SewingQCStyleOverlapAlert,
   SewingQCDailySummaryResponse,
   Size,
   PaginatedSizeList,
@@ -2096,6 +2160,21 @@ token if the refresh token is valid.`,
       },
     ],
     response: z.void(),
+  },
+  {
+    method: "get",
+    path: "/api/tracking/finishing-qc/daily-summary/",
+    alias: "tracking_finishing_qc_daily_summary_retrieve",
+    description: `Today&#x27;s finishing-QC tally for the current user&#x27;s line: output (pass), rework, fail, pass-rate and DHU%, plus a per-order serial grid where each serial shows both its sewing-QC and finishing-QC status.`,
+    requestFormat: "json",
+    parameters: [
+      {
+        name: "date",
+        type: "Query",
+        schema: z.string().optional(),
+      },
+    ],
+    response: FinishingQCDailySummaryResponse,
   },
   {
     method: "get",

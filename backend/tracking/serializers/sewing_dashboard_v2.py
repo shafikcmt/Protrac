@@ -139,17 +139,24 @@ class SewingLineDashboardV2Serializer(serializers.Serializer):
     )
 
     # Line metrics (bottom cards)
-    total_input = serializers.IntegerField(required=False, default=0, help_text="Total input (active style only, matches DPR)")
-    total_output = serializers.IntegerField(required=False, default=0, help_text="Total output (active style only)")
+    total_input = serializers.IntegerField(required=False, default=0, help_text="Total input (every live style on the line)")
+    total_output = serializers.IntegerField(required=False, default=0, help_text="Total output (every live style on the line)")
     line_wip = serializers.IntegerField(help_text="Line work in progress count")
 
-    # Active style + pending-old-style badge (single source of truth = DPR)
+    # Active styles + pending-old-style badge (single source of truth = DPR)
     active_style_id = serializers.IntegerField(required=False, allow_null=True, default=None)
-    active_style_name = serializers.CharField(required=False, allow_null=True, default=None)
+    active_style_name = serializers.CharField(
+        required=False, allow_null=True, default=None,
+        help_text="Primary (newest-issued) style; kept for backward compatibility",
+    )
+    active_style_names = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list,
+        help_text="All live styles on the line, primary first",
+    )
     pending_old_style_count = serializers.IntegerField(required=False, default=0)
     pending_old_pending_qty = serializers.IntegerField(required=False, default=0)
 
-    # Assembly (active style only, matches DPR assembly_input)
+    # Assembly (every live style, matches Total Input scope)
     assembly_input_day = serializers.IntegerField(required=False, default=0)
     assembly_input_cumulative = serializers.IntegerField(required=False, default=0)
 

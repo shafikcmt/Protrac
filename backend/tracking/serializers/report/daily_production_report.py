@@ -166,6 +166,13 @@ class OrderProductionReportSerializer(serializers.Serializer):
         default=0,
         help_text="Cumulative input minus cumulative output (pieces still to be output)",
     )
+    active_style_name = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Name of the newer/active style that started on this line "
+        "(only set on pending-transition rows); null otherwise",
+    )
     remarks = serializers.CharField(
         required=False,
         allow_blank=True,

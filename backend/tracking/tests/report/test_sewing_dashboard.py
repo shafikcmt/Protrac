@@ -143,9 +143,16 @@ class TestSewingDashboard:
             status=GarmentStatus.ISSUED_FOR_ASSEMBLY,
             sewing_line=sewing_line,
         )
-        GarmentFactory(order=order, status=GarmentStatus.SEWING_QC_PASS)
-        GarmentFactory(order=order, status=GarmentStatus.SEWING_QC_PASS)
-        GarmentFactory(order=order, status=GarmentStatus.SEWING_QC_PASS)
+        # Output is scoped to this sewing line, so these must carry sewing_line
+        GarmentFactory(
+            order=order, status=GarmentStatus.SEWING_QC_PASS, sewing_line=sewing_line
+        )
+        GarmentFactory(
+            order=order, status=GarmentStatus.SEWING_QC_PASS, sewing_line=sewing_line
+        )
+        GarmentFactory(
+            order=order, status=GarmentStatus.SEWING_QC_PASS, sewing_line=sewing_line
+        )
 
         # Create inventory to make order appear in dashboard
         PartInventoryFactory(
@@ -440,7 +447,8 @@ class TestSewingDashboard:
         garment3 = GarmentFactory(order=order, sewing_line=sewing_line)
         garment4 = GarmentFactory(order=order, sewing_line=sewing_line)
 
-        # QC check 1: Failed with 2 stitching defects
+        # QC check 1: Failed. `defects` is a plain M2M, so adding the same
+        # defect twice stores a single relation (1 stitching defect, not 2).
         qc1 = QualityCheck.objects.create(
             garment=garment1,
             status=QualityCheckStatus.FAIL,
@@ -488,19 +496,21 @@ class TestSewingDashboard:
         assert qc_stats["qc_pass"] == 1
         assert qc_stats["qc_fail"] == 2
         assert qc_stats["qc_rework"] == 1
-        assert qc_stats["total_defects"] == 5  # 2 + 1 + 2 defects
-        assert qc_stats["dhu_percentage"] == 125.0  # (5 defects / 4 units) * 100
+        # Distinct defect relations: qc1 stitching(1) + qc2 fit(1) + qc3
+        # stitching+color(2) = 4 (the duplicate stitching on qc1 is deduped).
+        assert qc_stats["total_defects"] == 4
+        assert qc_stats["dhu_percentage"] == 100.0  # (4 defects / 4 units) * 100
 
         # Check top defects
         top_defects = qc_stats["top_defects"]
         assert len(top_defects) == 3  # 3 different defect types
 
-        # Stitching should be #1 (3 occurrences: 2 + 1)
+        # Stitching is #1 (2 occurrences: qc1 + qc3)
         stitching_defect_item = next(
             d for d in top_defects if d["defect_name"] == "Stitching Issue"
         )
-        assert stitching_defect_item["count"] == 3
-        assert stitching_defect_item["percentage"] == 60.0  # (3/5) * 100
+        assert stitching_defect_item["count"] == 2
+        assert stitching_defect_item["percentage"] == 50.0  # (2/4) * 100
 
         # Check production line QC summary
         line_data = response.data[0]
@@ -510,8 +520,8 @@ class TestSewingDashboard:
         assert qc_summary["total_qc_pass"] == 1
         assert qc_summary["total_qc_fail"] == 2
         assert qc_summary["total_qc_rework"] == 1
-        assert qc_summary["total_defects"] == 5
-        assert qc_summary["line_dhu_percentage"] == 125.0
+        assert qc_summary["total_defects"] == 4
+        assert qc_summary["line_dhu_percentage"] == 100.0
 
         # Check line-level top defects
         top_line_defects = qc_summary["top_line_defects"]
@@ -520,7 +530,7 @@ class TestSewingDashboard:
         # Stitching should be top defect at line level too
         top_defect = top_line_defects[0]
         assert top_defect["defect_name"] == "Stitching Issue"
-        assert top_defect["count"] == 3
+        assert top_defect["count"] == 2
 
     def test_zero_defects_scenario(self, authenticated_client):
         """Test DHU calculation when there are no defects."""

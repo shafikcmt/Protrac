@@ -23,9 +23,8 @@ from tracking.models.constants import LineType, GarmentStatus
 from tracking.models.constants import QualityCheckStatus
 from tracking.models import Scan as TrackingScan
 from tracking.services.line_visibility import (
-    is_style_complete,
     pending_quantity as _pending_quantity,
-    get_manual_completed_order_ids,
+    get_completed_order_ids,
 )
 
 
@@ -54,21 +53,26 @@ def _apply_active_only_by_delivery(
     active_only: bool = True,
 ):
     """
-    active_only=True হলে শুধু valid/future delivery_date order দেখাবে।
+    active_only=True হলে শুধু valid/current/future delivery_date order দেখাবে।
 
     Exclude:
-      - delivery_date is null
-      - delivery_date <= cutoff_date
+      - delivery_date < cutoff_date
     """
     if not active_only:
         return qs
 
     # Null delivery_date = no deadline entered yet → treat as still-active
-    # (include it). Only orders whose delivery_date has clearly passed
-    # (<= cutoff) are excluded as finished/delivered.
+    # (include it). Only orders whose delivery_date has *clearly* passed
+    # (strictly before the cutoff) are excluded as finished/delivered.
+    #
+    # The cutoff day itself is INCLUDED: a delivery date is a deadline, not an
+    # exclusion date. An order due today is still being sewn today — dropping it
+    # made whole lines vanish from the report on the exact day they were running
+    # flat out (observed on Sewing-5: 28 active-style orders all due that day,
+    # 38 garments QC-passed, line absent from the report entirely).
     return qs.filter(
         Q(**{f"{delivery_field_path}__isnull": True})
-        | Q(**{f"{delivery_field_path}__gt": cutoff_date})
+        | Q(**{f"{delivery_field_path}__gte": cutoff_date})
     )
 
 
@@ -247,12 +251,22 @@ def get_daily_production_report_data(
 
         candidate_ids = bundle_activity | garment_activity | part_inventory_orders
         candidate_ids.discard(None)
-        if not candidate_ids:
-            continue
 
         # Apply the order-level filters (delivery/buyer/style/order/size/color).
-        line_orders = list(orders_qs.filter(id__in=candidate_ids))
+        line_orders = (
+            list(orders_qs.filter(id__in=candidate_ids)) if candidate_ids else []
+        )
+
+        # A line with nothing to report is emitted with an empty `orders` list
+        # rather than skipped — see the append at the end of this loop.
         if not line_orders:
+            report_data.append(
+                {
+                    "production_line_id": line.id,
+                    "production_line_name": line.name,
+                    "orders": [],
+                }
+            )
             continue
 
         lines_processed += 1
@@ -272,18 +286,19 @@ def get_daily_production_report_data(
             .first()
         )
 
-        # Preload orders manually marked complete on this line (single source of
-        # truth in line_visibility). For past-date reports only completions made
-        # on or before report_date count, so history is not rewritten by a
-        # completion recorded later.
-        completed_order_ids = get_manual_completed_order_ids(
+        # Preload orders marked complete on this line — manually by an operator or
+        # automatically when a new style superseded them (single source of truth
+        # in line_visibility). For past-date reports only completions made on or
+        # before report_date count, so history is not rewritten by a completion
+        # recorded later.
+        completed_order_ids = get_completed_order_ids(
             line, as_of_date=report_date
         ) & set(order_ids_on_line)
 
-        # When the caller asks to reveal hidden rows, map each manually-completed
-        # order on this line to its LineStyleCompletion id so the row can carry a
+        # When the caller asks to reveal hidden rows, map each completed order on
+        # this line to its LineStyleCompletion id so the row can carry a
         # completion_id (used by the UI's "Unhide" action). Mirrors the as-of-date
-        # guard used by get_manual_completed_order_ids so history is not rewritten.
+        # guard used by get_completed_order_ids so history is not rewritten.
         completion_id_by_order: Dict[int, int] = {}
         if include_hidden and completed_order_ids:
             comp_qs = LineStyleCompletion.objects.filter(
@@ -299,6 +314,16 @@ def get_daily_production_report_data(
         # must not be flagged.
         active_style_id = next(
             (o.style_id for o in line_orders if o.id == active_order_id), None
+        )
+        # Name of the newer/active style, surfaced on pending-transition rows so
+        # the UI can name it explicitly ("... while <new style> has started").
+        active_style_name = next(
+            (
+                o.style.name
+                for o in line_orders
+                if o.id == active_order_id and getattr(o, "style", None)
+            ),
+            None,
         )
 
         # Work hours come from the line's target for the selected date. When no
@@ -333,6 +358,7 @@ def get_daily_production_report_data(
                 active_only=active_only,
                 active_order_id=active_order_id,
                 active_style_id=active_style_id,
+                active_style_name=active_style_name,
                 completed_order_ids=completed_order_ids,
                 metrics=metrics,
                 line_work_hours=line_work_hours,
@@ -343,8 +369,13 @@ def get_daily_production_report_data(
                 line_report["orders"].append(order_data)
                 orders_processed += 1
 
-        if line_report["orders"]:
-            report_data.append(line_report)
+        # Always emit the line, even with zero qualifying rows. A line that is
+        # idle, or whose rows were all filtered out, must be *visibly* empty
+        # rather than silently absent — a missing line is indistinguishable from
+        # a bug, which is exactly how the Sewing-5 delivery-date defect stayed
+        # hidden. Consumers that need "lines with data" filter on orders being
+        # non-empty (see _generate_summary).
+        report_data.append(line_report)
 
     elapsed_ms = (time.perf_counter() - started_at) * 1000
     logger.info(
@@ -630,6 +661,7 @@ def _build_order_row(
     active_only: bool,
     active_order_id: Optional[int],
     active_style_id: Optional[int],
+    active_style_name: Optional[str],
     completed_order_ids: set,
     metrics: Dict[str, Dict[int, Any]],
     line_work_hours: Optional[int] = None,
@@ -640,10 +672,16 @@ def _build_order_row(
 
     oid = order.id
 
-    # Only today's report excludes null / expired delivery dates.
+    # Only today's report excludes expired delivery dates.
+    #
+    # This MUST stay in step with _apply_active_only_by_delivery above, which is
+    # the queryset-level half of the same rule. It previously diverged: the
+    # queryset let NULL-delivery orders through and this check then dropped them,
+    # so the documented "no deadline entered yet = still active" intent never
+    # actually took effect. NULL is now kept in both halves.
     if active_only:
         dd = getattr(order, "delivery_date", None)
-        if dd is None or dd <= report_date:
+        if dd is not None and dd < report_date:
             return None
 
     # Manual completion hides the style on this line for the selected date and
@@ -671,12 +709,20 @@ def _build_order_row(
     output = metrics["output"].get(oid, {"day": 0, "cumulative": 0})
     cumulative_output = int(output.get("cumulative", 0) or 0)
 
-    # Auto-hide fully-output styles for *every* report date (computed as of the
-    # selected date). This removes duplicate sewing-line rows once the old
-    # style is finished, and makes past-date reports hide styles that were
-    # already complete before the selected date.
-    if is_style_complete(cumulative_input, cumulative_output) and not is_hidden:
-        return None
+    # NOTE: there is deliberately no completeness check here any more.
+    #
+    # This used to drop any row where input == output, with an `is_active_style`
+    # exemption bolted on (commit e187b04) because the bare rule made a live run
+    # vanish whenever its fed batch was momentarily caught up. Both the rule and
+    # its exemption are gone: "this style is finished on this line" is now decided
+    # at the moment a new style is assigned (or when late output catches up) and
+    # recorded as an AUTO LineStyleCompletion, which the `is_hidden` check above
+    # already honours. See tracking/services/line_completion.py.
+    #
+    # The practical difference: a style that is finished but has NOT been
+    # superseded stays visible until something supersedes it or an operator marks
+    # it complete. That is intended — a finished-looking style on the line that is
+    # still running is exactly what must not disappear.
 
     # --- Parts production keyed by style part name ---
     parts_agg = metrics["parts"].get(oid, {})
@@ -819,6 +865,7 @@ def _build_order_row(
         "needs_manual_complete": needs_manual_complete,
         "is_pending_transition": is_pending_transition,
         "pending_quantity": pending_qty,
+        "active_style_name": active_style_name if is_pending_transition else None,
         "remarks": remarks,
         "is_hidden": is_hidden,
         "completion_id": (

@@ -175,13 +175,15 @@ def get_part_receive_info(
         .order_by("-created_at")
     )
 
-    # Drop scans belonging to inactive styles (superseded / completed / expired)
-    # so the history list only reflects currently active styles on this line.
-    from tracking.services.line_visibility import get_inactive_order_ids_for_line
+    # Keep only scans belonging to what the line is currently running, so the
+    # history list matches the inventory list below (and the daily production
+    # report). Visible = active style ∪ older styles still pending transition,
+    # minus anything hidden (manual completion / full output) or past its
+    # delivery date.
+    from tracking.services.line_visibility import get_visible_order_ids_for_line
 
-    inactive_order_ids = get_inactive_order_ids_for_line(scanner.production_line)
-    if inactive_order_ids:
-        scan_queryset = scan_queryset.exclude(bundle__order_id__in=inactive_order_ids)
+    visible_order_ids = get_visible_order_ids_for_line(scanner.production_line)
+    scan_queryset = scan_queryset.filter(bundle__order_id__in=visible_order_ids)
 
     # Filter by order if specified
     if order_id:
@@ -268,13 +270,18 @@ def _get_current_inventory_info(
         .order_by("order__id", "part__name")
     )
 
-    # Show only currently ACTIVE styles on this line. Inactive = hidden (manual /
-    # fully-output) ∪ superseded by a newer style on the line ∪ delivery expired,
-    # via the shared line-visibility source of truth for secondary scan surfaces.
-    from tracking.services.line_visibility import get_inactive_order_ids_for_line
+    # Show only what this line is currently running. PartInventory rows are
+    # cumulative state with no date bound, so merely excluding the hide-set
+    # (manual completion ∪ fully-output) left every never-completed historical
+    # order on the list forever. Ask for the positive set instead: the line's
+    # active style ∪ older styles still pending transition, minus hidden, minus
+    # delivery-expired — the same visibility rule the daily production report
+    # applies (the delivery gate is what actually bounds the list; pending
+    # transition alone almost never closes out).
+    from tracking.services.line_visibility import get_visible_order_ids_for_line
 
-    inactive_order_ids = get_inactive_order_ids_for_line(scanner.production_line)
-    inventory_queryset = inventory_queryset.exclude(order_id__in=inactive_order_ids)
+    visible_order_ids = get_visible_order_ids_for_line(scanner.production_line)
+    inventory_queryset = inventory_queryset.filter(order_id__in=visible_order_ids)
 
     # Filter by order if specified
     if order_id:
