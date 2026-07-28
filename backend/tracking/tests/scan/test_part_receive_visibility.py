@@ -263,27 +263,28 @@ class TestAssemblyHistoryVisibility:
             scenario["line"]
         )
 
-    def test_delivery_date_on_the_cutoff_is_excluded(self, scenario):
-        """The report uses ``dd <= report_date``, so today itself is expired."""
+    def test_delivery_date_on_the_cutoff_is_included(self, scenario):
+        """The report uses ``dd < report_date``, so today itself is still active.
+
+        A delivery date is a deadline, not an exclusion date — an order due today
+        is being produced today. Excluding it made whole lines vanish from the
+        report on their busiest day.
+        """
         order_active = scenario["order_active"]
         order_active.delivery_date = today()
         order_active.save(update_fields=["delivery_date"])
 
-        assert order_active.id not in lv.get_visible_order_ids_for_line(
-            scenario["line"]
-        )
+        assert order_active.id in lv.get_visible_order_ids_for_line(scenario["line"])
 
-    def test_null_delivery_date_is_excluded_even_for_active_style(self, scenario):
-        """NULL counts as expired here — deliberate DPR parity, and the OPPOSITE
-        of get_inactive_order_ids_for_heatmap, which treats NULL as active."""
+    def test_null_delivery_date_is_active_for_active_style(self, scenario):
+        """NULL = no deadline entered yet = still active, matching the report and
+        get_inactive_order_ids_for_heatmap. All three surfaces now agree."""
         order_active = scenario["order_active"]
         order_active.delivery_date = None
         order_active.save(update_fields=["delivery_date"])
 
-        assert order_active.id not in lv.get_visible_order_ids_for_line(
-            scenario["line"]
-        )
-        # Guard the divergence so a future "unification" has to face this test.
+        assert order_active.id in lv.get_visible_order_ids_for_line(scenario["line"])
+        # NULL must not be treated as expired by the heatmap either.
         assert order_active.id not in lv.get_inactive_order_ids_for_heatmap(
             scenario["line"]
         )

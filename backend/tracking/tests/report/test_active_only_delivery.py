@@ -3,7 +3,9 @@
 Regression coverage for the Sewing-6 data mismatch bug: orders with
 delivery_date = NULL (no deadline entered yet) must be treated as
 still-active and counted in Output/Actual metrics, not silently excluded.
-Only orders whose delivery_date has clearly passed (<= today) are dropped.
+Only orders whose delivery_date has clearly passed (strictly before today) are
+dropped — the delivery date itself is a deadline, not an exclusion date, so an
+order due today is still active.
 
 The same null-safe rule is exercised for both the Daily Production Report
 helper and the Sewing Dashboard v2 helper. Group B (garment_heatmap /
@@ -49,7 +51,10 @@ class TestActiveOnlyDeliveryNullSafe:
         assert null_order.id in ids, "NULL delivery_date must be treated as active"
         assert future_order.id in ids, "Future delivery_date must stay active"
         assert past_order.id not in ids, "Past delivery_date must be excluded"
-        assert today_order.id not in ids, "delivery_date == today (<= cutoff) excluded"
+        assert today_order.id in ids, (
+            "delivery_date == cutoff must stay active — an order due today is "
+            "still being produced today"
+        )
 
     def test_daily_report_helper_active_only_false_includes_everything(self):
         null_order, future_order, past_order, today_order = self._make_orders()
@@ -71,7 +76,10 @@ class TestActiveOnlyDeliveryNullSafe:
         assert null_order.id in ids, "NULL delivery_date must be treated as active"
         assert future_order.id in ids, "Future delivery_date must stay active"
         assert past_order.id not in ids, "Past delivery_date must be excluded"
-        assert today_order.id not in ids, "delivery_date == today (<= today) excluded"
+        assert today_order.id in ids, (
+            "delivery_date == today must stay active — an order due today is "
+            "still being produced today"
+        )
 
     def test_v2_helper_active_only_false_includes_everything(self):
         null_order, future_order, past_order, today_order = self._make_orders()

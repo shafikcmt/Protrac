@@ -475,10 +475,15 @@ class TestDailyProductionReport:
         assert response.status_code == status.HTTP_200_OK
         data = response.data
 
-        # Should handle missing data gracefully (no activity -> nothing shown)
+        # Should handle missing data gracefully (no activity -> no rows shown)
         assert data["summary"]["total_orders"] == 0  # No orders with actual data
         assert data["summary"]["overall_efficiency"] == 0.0
-        assert data["production_lines"] == []  # No lines with data
+
+        # The line is still listed, with an empty `orders` list. Lines are never
+        # silently omitted — an absent line is indistinguishable from a bug,
+        # which is how the Sewing-5 delivery-date defect went unnoticed.
+        assert [ln["orders"] for ln in data["production_lines"]] == [[]]
+        assert data["summary"]["total_production_lines"] == 0  # none have data
 
 
 # ---------------------------------------------------------------------------

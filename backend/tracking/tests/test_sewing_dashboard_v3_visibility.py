@@ -31,6 +31,7 @@ from tracking.models.constants import (
     QualityCheckCheckpoint,
     ScanEventType,
 )
+from tracking.services.line_completion import reconcile_order_completion
 from tracking.services.sewing_dashboard_v2 import get_sewing_dashboard_v2_data
 from tracking.tests.conftest import (
     ProductionLineFactory,
@@ -136,8 +137,17 @@ class TestV3PendingTransitionStaysVisible:
         assert row["total_output"] == 0
         assert row["pending_old_style_count"] == 0
 
-    def test_fully_output_old_style_is_removed(self, scenario):
-        """Condition 1: Input == Output hides the style without any manual step."""
+    def test_fully_output_old_style_is_removed_once_the_qc_trigger_fires(
+        self, scenario
+    ):
+        """Input == Output hides a superseded style — but only via the trigger.
+
+        Completeness is no longer evaluated at query time (it false-hid live
+        styles whose fed batch was momentarily caught up). It is evaluated when a
+        sewing-QC pass lands on a non-active style, which is what
+        ``process_sewing_qc_scan`` calls. This test writes QC rows directly, so it
+        invokes ``reconcile_order_completion`` explicitly to stand in for the scan.
+        """
         line, order_old = scenario["line"], scenario["order_old"]
         qc_scanner = scenario["qc_scanner"]
 
@@ -158,6 +168,12 @@ class TestV3PendingTransitionStaysVisible:
                 garment=g, scanner=qc_scanner,
                 event_type=ScanEventType.SEWING_QUALITY_CHECK,
             )
+
+        # Until the trigger runs the style is still listed — recording the
+        # completion is what hides it, not the raw numbers.
+        assert self._row(line)["active_style_names"] == ["NEW", "OLD"]
+
+        assert reconcile_order_completion(line, order_old) is True
 
         row = self._row(line)
         assert row["active_style_names"] == ["NEW"]

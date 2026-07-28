@@ -202,7 +202,13 @@ export function ProductionReportTable({
     );
   }
 
-  if (!reportData?.production_lines?.length) {
+  // The backend now returns every sewing line, including ones with no rows, so
+  // "is there anything to show?" must look at the orders, not the line count.
+  const hasAnyOrders = (reportData?.production_lines || []).some(
+    (line: any) => (line.orders || []).length > 0
+  );
+
+  if (!hasAnyOrders) {
     return (
       <Card>
         <CardContent className="p-6">
@@ -215,6 +221,14 @@ export function ProductionReportTable({
       </Card>
     );
   }
+
+  // Lines the report covers but has nothing to show for. Surfaced explicitly so
+  // an idle or fully-filtered line reads as "no orders today" instead of just
+  // being absent from the table.
+  const idleLineNames = (reportData?.production_lines || [])
+    .filter((line: any) => (line.orders || []).length === 0)
+    .map((line: any) => line.production_line_name)
+    .filter(Boolean);
 
   // Visible (active) groups drive the numbers shown and the buyer subtotals —
   // they must exclude hidden rows so the table matches the backend summary.
@@ -381,6 +395,14 @@ export function ProductionReportTable({
       </CardHeader>
 
       <CardContent className="p-0">
+        {idleLineNames.length > 0 && (
+          <div className="px-3 py-2 text-xs text-muted-foreground border-b">
+            No orders to report today on:{" "}
+            <span className="font-medium text-foreground">
+              {idleLineNames.join(", ")}
+            </span>
+          </div>
+        )}
         <div ref={wrapRef} className="w-full overflow-hidden print:overflow-visible">
           <Table className="[&_th]:px-1 [&_td]:px-1 [&_td]:py-1 [&_th]:text-[length:var(--rpt-font,11px)] [&_td]:text-[length:calc(var(--rpt-font,11px)_-_1px)] [&_td]:font-semibold [&_td]:tabular-nums [&_thead_th]:font-semibold [&_thead_tr:last-child_th]:font-normal [&_thead_tr:last-child_th]:text-muted-foreground [&_tbody_tr>td:nth-child(n+8):nth-child(-n+29)]:px-0.5 [&_thead_tr:last-child>th:nth-child(n+8):nth-child(-n+29)]:px-0.5 [&_thead_tr:first-child>th:nth-child(2n+8)]:bg-muted/40 print:[&_th]:!text-[8px] print:[&_td]:!text-[8px] print:[&_th]:px-0.5 print:[&_td]:px-0.5 print:[&_thead_tr:first-child>th]:!bg-transparent">
             <TableHeader>

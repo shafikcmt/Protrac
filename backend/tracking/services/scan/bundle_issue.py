@@ -3,6 +3,7 @@ from django.utils import timezone
 from typing import Dict, TYPE_CHECKING
 from tracking.models import Bundle, Scan
 from tracking.services.tracking_code import find_item_by_tracking_code
+from tracking.services.line_completion import _safely, handle_style_assigned_to_line
 from tracking.models.constants import ScannerType, BundleStatus, ScanEventType
 
 if TYPE_CHECKING:
@@ -86,6 +87,17 @@ def process_bundle_issue_scan(
 
     # Issue bundle to specified sewing line
     _issue_bundle_to_sewing_line(bundle, sewing_line)
+
+    # This is the auto-hide trigger: the bundle's style is now the line's active
+    # style, so any *other* style on the line that is fully output is finished and
+    # gets an AUTO completion. Must run after the save above, which is what makes
+    # the new style active. Best-effort — never fail an operator's scan over
+    # bookkeeping.
+    _safely(
+        handle_style_assigned_to_line,
+        sewing_line,
+        getattr(bundle.order, "style_id", None),
+    )
 
     # Create scan record
     scan = _create_bundle_issue_scan(bundle, scanner, user)

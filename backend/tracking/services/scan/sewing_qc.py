@@ -3,6 +3,7 @@ from typing import Dict, List, TYPE_CHECKING
 from common.utils.time import now
 from tracking.models import Garment, Scan, QualityCheck, Defect
 from tracking.services.tracking_code import find_item_by_tracking_code
+from tracking.services.line_completion import _safely, reconcile_order_completion
 from tracking.models.constants import (
     ScannerType,
     GarmentStatus,
@@ -142,6 +143,19 @@ def process_sewing_qc_scan(
         scanner=scanner,
         event_type=ScanEventType.SEWING_QUALITY_CHECK,
     )
+
+    # Second auto-completion trigger: late output catching up. A style superseded
+    # at, say, 450/500 is correctly left visible at assignment time; the remaining
+    # 50 trickle through QC over the following days and nothing else would notice
+    # it had finished. Only passes matter (output is pass-counted), and only for
+    # orders that are not the line's active style — the active style is never
+    # auto-completed. Best-effort; never fails the scan.
+    if new_status == GarmentStatus.SEWING_QC_PASS and garment.sewing_line_id:
+        _safely(
+            reconcile_order_completion,
+            garment.sewing_line,
+            garment.order,
+        )
 
     # Prepare response message
     action = "reevaluated" if is_reevaluation else "processed"

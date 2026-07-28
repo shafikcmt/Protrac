@@ -5,17 +5,28 @@ A sewing line normally runs one active style/order at a time. When a new
 style/order starts on a line, the previous one should disappear from every
 operational view **once it is finished** — either because:
 
-  * it was fully output (cumulative sewing input == cumulative sewing output), or
-  * a user manually marked it complete on that line (``LineStyleCompletion``).
+  * a user manually marked it complete on that line, or
+  * it was fully output (input == output) *at the moment a new style was
+    assigned to the line*, or when late output caught up afterwards.
+
+Both cases are recorded as a ``LineStyleCompletion`` row (MANUAL / AUTO), which
+is the only thing consulted at query time. Completeness is deliberately NOT
+recomputed per request: input arrives in batches over several days, so a live
+style sits at input == output whenever its current batch is caught up and more
+is still to come, and hiding on that basis made running lines vanish. The
+triggers that write AUTO rows live in :mod:`tracking.services.line_completion`.
 
 Historically this rule was re-implemented (slightly differently) in the daily
 production report, the sewing kiosk dashboard, the heatmap and the assembly
 scan screens. This module centralises the rule so every surface hides the same
 orders. All callers should use:
 
-  * :func:`is_style_complete`            — the pure rule (input vs output)
-  * :func:`get_manual_completed_order_ids` — manual completions for a line
-  * :func:`get_hidden_order_ids_for_line`  — manual ∪ auto-hidden, as of a date
+  * :func:`is_style_complete`            — the pure rule (input vs output). This
+    is now a *trigger predicate* only, evaluated at the moments handled by
+    :mod:`tracking.services.line_completion`. It is NOT applied at query time —
+    doing so false-hid live styles whose fed batch was momentarily caught up
+  * :func:`get_completed_order_ids`      — recorded completions (MANUAL ∪ AUTO)
+  * :func:`get_hidden_order_ids_for_line`  — the hide-set, as of a date
   * :func:`get_inactive_order_ids_for_line` — hidden only (Conditions 1+1b), for
     the scan surfaces + V3 (NOT the DPR). Superseded-by-newer-style (old Condition
     2) is NO LONGER auto-hidden here — see below.
@@ -26,8 +37,7 @@ orders. All callers should use:
   * :func:`get_visible_order_ids_for_line` — the positive set (active style ∪
     pending old styles − hidden − delivery-expired), matching what the daily
     production report actually renders. For cumulative-state surfaces that would
-    otherwise accumulate every never-completed historical order. NOTE its NULL
-    delivery_date handling is the opposite of the heatmap helper below
+    otherwise accumulate every never-completed historical order
   * :func:`get_inactive_order_ids_for_heatmap` — hidden ∪ delivery-expired
     (Conditions 1+1b+3), for the heatmap surfaces ONLY
 
@@ -192,11 +202,16 @@ def compute_line_input_output(
 # Hidden order ids
 # ----------------------------
 
-def get_manual_completed_order_ids(
+def get_completed_order_ids(
     line: ProductionLine,
     as_of_date: Optional[date] = None,
 ) -> set:
-    """Order ids manually marked complete on ``line``.
+    """Order ids marked complete on ``line``, by an operator or automatically.
+
+    Both sources count as hidden — see
+    :class:`tracking.models.constants.CompletionSource`. They differ only in how
+    they end (AUTO rows are cleared when the style is re-issued on the line;
+    MANUAL rows are not), never in whether they hide.
 
     When ``as_of_date`` is given, only completions recorded on or before that
     date count — so historical (past-date) reports are not retroactively
@@ -215,32 +230,22 @@ def get_hidden_order_ids_for_line(
 ) -> set:
     """Return the set of order ids that must be hidden on ``line``.
 
-    Hidden = manually completed (as of date) ∪ auto-completed (fully output as
-    of date). Used by the secondary surfaces (kiosk v3, heatmap, assembly &
-    sewing-QC scan) so a style hidden in the daily report is hidden everywhere.
+    Hidden = a recorded ``LineStyleCompletion`` (MANUAL or AUTO), as of date.
+    Used by every surface (daily report, kiosk v3, heatmap, assembly & sewing-QC
+    scan) so a style hidden in one place is hidden everywhere.
 
-    ``orders`` may be supplied to bound the auto-hide computation; when omitted
-    it is derived from bundles issued on the line.
+    **This no longer computes completeness.** It used to also hide any order
+    whose input was fully output *at query time*, which false-hid live styles:
+    input arrives in batches over several days, so a style sits at input ==
+    output whenever the current batch is caught up and more is still to come.
+    That rule now fires only at two explicit events — a new style being assigned
+    to the line, and late output catching up afterwards — and records its answer
+    as an AUTO completion. See :mod:`tracking.services.line_completion`.
+
+    ``orders`` is accepted for signature compatibility with the callers that pass
+    a pre-resolved list; it no longer affects the result.
     """
-    hidden = get_manual_completed_order_ids(line, as_of_date=as_of_date)
-
-    if orders is None:
-        line_order_ids = list(
-            Bundle.objects.filter(assigned_sewing_line=line)
-            .order_by()
-            .values_list("order_id", flat=True)
-            .distinct()
-        )
-        orders = list(
-            Order.objects.filter(id__in=line_order_ids).prefetch_related("style__parts")
-        )
-
-    io = compute_line_input_output(line, orders, as_of_date=as_of_date)
-    for oid, (cum_in, cum_out) in io.items():
-        if is_style_complete(cum_in, cum_out):
-            hidden.add(oid)
-
-    return hidden
+    return get_completed_order_ids(line, as_of_date=as_of_date)
 
 
 # ----------------------------
@@ -380,9 +385,11 @@ def get_style_overlap_alert(
 
     orders = _resolve_line_orders(line, None)
     pending_ids = _superseded_order_ids(line, orders, as_of_date=as_of_date)
-    # Only surface orders NOT already manually hidden (those are resolved).
-    manual = get_manual_completed_order_ids(line, as_of_date=as_of_date)
-    pending_ids = {oid for oid in pending_ids if oid not in manual}
+    # Only surface orders NOT already hidden (those are resolved) — by an
+    # operator or by the auto-completion triggers; either way there is nothing
+    # left for the user to act on.
+    hidden = get_completed_order_ids(line, as_of_date=as_of_date)
+    pending_ids = {oid for oid in pending_ids if oid not in hidden}
     if not pending_ids:
         return None
 
@@ -467,14 +474,14 @@ def get_visible_order_ids_for_line(
     ``daily_production_report._build_order_row``::
 
         dd = getattr(order, "delivery_date", None)
-        if dd is None or dd <= report_date:
+        if dd is not None and dd < report_date:
             return None
 
-    Note the NULL handling: a missing delivery date is treated as EXPIRED here,
-    dropping the order. That is deliberate DPR parity and is the OPPOSITE of
-    :func:`get_inactive_order_ids_for_heatmap`, which treats NULL as still-active.
-    The two surfaces genuinely differ; do not "unify" them without checking the
-    report first.
+    Only *strictly past* delivery dates expire. The cutoff day itself is still
+    active — a delivery date is a deadline, not an exclusion date — and a NULL
+    delivery date (no deadline entered yet) is also still active, matching both
+    the report and :func:`get_inactive_order_ids_for_heatmap`. These three
+    surfaces now agree on all three cases; keep them in step.
 
     Returns an empty set when the line has no issued bundles (no active style) —
     such a line legitimately has nothing current to show.
@@ -499,13 +506,14 @@ def get_visible_order_ids_for_line(
     )
 
     # Delivery-date gate, applied last and uniformly — the active style is NOT
-    # exempt, exactly as in the report (an active-style order with no delivery
-    # date entered is dropped there too).
+    # exempt, exactly as in the report. Only *strictly past* delivery dates
+    # expire; the cutoff day itself and a NULL delivery date both stay visible,
+    # matching the report's rule.
     cutoff = as_of_date or today()
     expired = {
         o.id
         for o in orders
-        if getattr(o, "delivery_date", None) is None or o.delivery_date <= cutoff
+        if getattr(o, "delivery_date", None) is not None and o.delivery_date < cutoff
     }
     return visible - expired
 
@@ -528,10 +536,12 @@ def get_inactive_order_ids_for_heatmap(
 
     inactive = get_inactive_order_ids_for_line(line, as_of_date=as_of_date, orders=orders)
 
-    # Condition 3: delivery date expired (null = still active).
+    # Condition 3: delivery date expired (null = still active). Only *strictly
+    # past* dates expire — the cutoff day itself is still active, matching the
+    # report and get_visible_order_ids_for_line.
     cutoff = as_of_date or today()
     for order in orders:
         dd = getattr(order, "delivery_date", None)
-        if dd is not None and dd <= cutoff:
+        if dd is not None and dd < cutoff:
             inactive.add(order.id)
     return inactive

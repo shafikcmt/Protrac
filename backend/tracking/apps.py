@@ -10,6 +10,12 @@ logger = logging.getLogger("tracking.scheduler")
 # (and anything else in this process) can reach it to live-reschedule the job.
 _scheduler = None
 
+# Nightly auto-completion sweep (tracking.services.line_completion). Fixed time:
+# 23:30 Asia/Dhaka — after the production day and after the 18:00 report email.
+LINE_COMPLETION_SWEEP_JOB_ID = "line_completion_sweep"
+SWEEP_HOUR = 23
+SWEEP_MINUTE = 30
+
 
 class TrackingConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
@@ -80,9 +86,45 @@ class TrackingConfig(AppConfig):
             # Re-apply the schedule whenever the admin saves the config row.
             self._connect_reschedule_signal()
 
+            # Nightly auto-completion sweep. Fixed time (not admin-configurable):
+            # it has no user-visible output to time around, and 23:30 puts it
+            # after the production day and after the 18:00 report email, so the
+            # emailed report and the sweep never race.
+            self._add_line_completion_sweep_job(scheduler)
+
             logger.info("Daily production report scheduler started.")
         except Exception:  # noqa: BLE001 — a scheduler failure must not block startup
             logger.exception("Failed to start the daily production report scheduler.")
+
+    def _add_line_completion_sweep_job(self, scheduler):
+        """Register the nightly auto-completion sweep at 23:30 Asia/Dhaka.
+
+        ``replace_existing`` keeps this idempotent if ready() runs more than once.
+
+        On the multi-worker caveat documented in _maybe_start_scheduler: each
+        gunicorn worker registers its own copy, so the sweep runs up to 3x at
+        23:30. That is harmless here in a way the email job's duplication is not —
+        the sweep is idempotent (get_or_create on a unique (line, order), and it
+        skips orders that already have a completion), so extra runs write nothing
+        and simply log a zero total. It is still worth fixing centrally; see the
+        note in _maybe_start_scheduler.
+        """
+        try:
+            from apscheduler.triggers.cron import CronTrigger
+
+            scheduler.add_job(
+                _run_line_completion_sweep_job,
+                trigger=CronTrigger(hour=SWEEP_HOUR, minute=SWEEP_MINUTE),
+                id=LINE_COMPLETION_SWEEP_JOB_ID,
+                replace_existing=True,
+            )
+            logger.info(
+                "Line-completion sweep scheduled at %02d:%02d Asia/Dhaka.",
+                SWEEP_HOUR,
+                SWEEP_MINUTE,
+            )
+        except Exception:  # noqa: BLE001 — must not block startup
+            logger.exception("Failed to schedule the line-completion sweep job.")
 
     def _connect_reschedule_signal(self):
         """Wire ReportScheduleConfig saves to a live reschedule of the job."""
@@ -115,3 +157,21 @@ def _run_daily_production_report_job():
     )
 
     send_daily_production_report_email()
+
+
+def _run_line_completion_sweep_job():
+    """Cron entry point for the nightly auto-completion sweep.
+
+    Identical to ``manage.py sweep_line_completions`` — both call the same
+    service function. Exceptions are swallowed and logged: a failed sweep must
+    never take down the scheduler thread (APScheduler would otherwise keep the
+    job but surface the error only in its own logs).
+    """
+    try:
+        from tracking.services.line_completion import sweep_auto_completions
+
+        results = sweep_auto_completions()
+        total = sum(len(v) for v in results.values())
+        logger.info("Nightly line-completion sweep finished: %d completion(s).", total)
+    except Exception:  # noqa: BLE001
+        logger.exception("Nightly line-completion sweep failed.")

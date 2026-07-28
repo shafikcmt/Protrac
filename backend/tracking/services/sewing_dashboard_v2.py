@@ -233,11 +233,15 @@ def _apply_active_only_by_delivery(qs, delivery_field_path: str, active_only: bo
 
     t = today()
     # Null delivery_date = no deadline entered yet → treat as still-active
-    # (include it). Only orders whose delivery_date has clearly passed
-    # (<= today) are excluded as finished/delivered.
+    # (include it). Only orders whose delivery_date has *clearly* passed
+    # (strictly before today) are excluded as finished/delivered.
+    #
+    # Today itself is INCLUDED — a delivery date is a deadline, not an exclusion
+    # date. Keep in step with the daily production report's copy of this rule
+    # (tracking/services/report/daily_production_report.py).
     return qs.filter(
         Q(**{f"{delivery_field_path}__isnull": True})
-        | Q(**{f"{delivery_field_path}__gt": t})
+        | Q(**{f"{delivery_field_path}__gte": t})
     )
 
 
@@ -258,14 +262,13 @@ def _exclude_completed_orders(
     if not active_only:
         return qs
 
-    # Single source of truth for manual completions (line_visibility). Kept to
-    # the manual set here on purpose: this helper is invoked many times per
-    # dashboard request, so the heavier auto-hide aggregation is intentionally
-    # not run on this hot path. Fully-output styles already drop out of the
-    # live (pending-bundle based) slides on their own.
-    from tracking.services.line_visibility import get_manual_completed_order_ids
+    # Single source of truth for completions (line_visibility). This is now a
+    # plain indexed lookup of recorded MANUAL/AUTO rows — the heavy per-request
+    # input/output aggregation this helper used to avoid no longer exists, so
+    # this hot path gets the full hide-set rather than just the manual subset.
+    from tracking.services.line_visibility import get_completed_order_ids
 
-    completed_order_ids = get_manual_completed_order_ids(production_line)
+    completed_order_ids = get_completed_order_ids(production_line)
 
     return qs.exclude(**{f"{order_field_path}__in": completed_order_ids})
 

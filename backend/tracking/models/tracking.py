@@ -11,6 +11,7 @@ from tracking.models.constants import (
     QualityCheckStatus,
     QualityCheckCheckpoint,
     ScanEventType,
+    CompletionSource,
 )
 from tracking.models.helpers import (
     validate_scan_item_exclusivity,
@@ -639,7 +640,21 @@ class BundleTransfer(BaseModel):
 
 
 class LineStyleCompletion(BaseModel):
-    """Manually marked completion of a style on a production line."""
+    """A style/order marked complete on a production line, hiding it from the
+    operational views.
+
+    Two ways one gets created (see ``source``):
+
+    * MANUAL — an operator pressed "Mark Complete" on the daily production report.
+    * AUTO   — recorded by :mod:`tracking.services.line_completion` when a new
+      style was assigned to the line (or when late output caught up) and the
+      previous style's input was fully output at that moment.
+
+    This is the single source of truth for "is this style finished on this line".
+    It replaced an implicit rule that hid any order whose input == output at query
+    time, which false-hid active styles whose fed batch was momentarily caught up
+    (input arrives in batches over several days).
+    """
 
     production_line = models.ForeignKey(
         ProductionLine,
@@ -656,6 +671,15 @@ class LineStyleCompletion(BaseModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        help_text="Null for AUTO completions (no user performed them).",
+    )
+    source = models.CharField(
+        max_length=10,
+        choices=CompletionSource.choices,
+        default=CompletionSource.MANUAL,
+        db_index=True,
+        help_text="Whether this completion was made by an operator or by the "
+        "new-style-assignment / late-output triggers.",
     )
     notes = models.TextField(blank=True, null=True)
 
@@ -663,4 +687,4 @@ class LineStyleCompletion(BaseModel):
         unique_together = ("production_line", "order")
 
     def __str__(self):
-        return f"{self.production_line.name} - {self.order} - manually completed"
+        return f"{self.production_line.name} - {self.order} - {self.get_source_display().lower()} completion"

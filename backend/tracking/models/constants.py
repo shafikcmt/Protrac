@@ -49,6 +49,23 @@ class QualityCheckCheckpoint(models.TextChoices):
     FINISHING_QC = "finishing_qc", "Finishing QC"
 
 
+class CompletionSource(models.TextChoices):
+    """How a :class:`~tracking.models.LineStyleCompletion` came to exist.
+
+    MANUAL — an operator pressed "Mark Complete" on the daily production report.
+    AUTO   — the system recorded it when a *new* style was assigned to the line
+             (or when late output finally caught up on an older style) and the
+             style's input was fully output at that moment.
+
+    The distinction matters: re-issuing a style on a line clears its AUTO record
+    so it becomes visible again, but never clears a MANUAL one — an operator's
+    explicit decision must survive.
+    """
+
+    MANUAL = "manual", "Manual"
+    AUTO = "auto", "Automatic"
+
+
 class ScanEventType(models.TextChoices):
     BUNDLE_ISSUED_TO_SEWING = "bundle_issued_to_sewing", "Bundle Issued to Sewing"
     BUNDLE_COMPLETED = "bundle_completed", "Bundle Completed"
