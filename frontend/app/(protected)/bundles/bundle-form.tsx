@@ -28,6 +28,7 @@ import { schemas } from "@/types/api/client";
 import { useOrders } from "../orders/use-orders";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SpreadCombobox } from "@/app/(protected)/bundles/spread-combobox";
+import { ColorCombobox } from "@/app/(protected)/bundles/color-combobox";
 import { Checkbox } from "@/components/ui/checkbox";
 import { OrderCombobox } from "@/components/forms/order-combobox";
 
@@ -56,6 +57,7 @@ export function BundleForm({
 }: BundleFormProps) {
   const [selectedOrderIdForSearch, setSelectedOrderIdForSearch] = useState(0);
   const [selectedOrderNumber, setSelectedOrderNumber] = useState("");
+  const [selectedColorId, setSelectedColorId] = useState(0);
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [bundleQuantities, setBundleQuantities] = useState<Record<number, number>>(
     {}
@@ -66,7 +68,7 @@ export function BundleForm({
     failed: string[];
   } | null>(null);
 
-  const { orders } = useOrders();
+  const { orders, isLoading: isLoadingOrders } = useOrders();
 
   const form = useForm<BundleFormData>({
     defaultValues: {
@@ -83,6 +85,7 @@ export function BundleForm({
       });
       setSelectedOrderIdForSearch(0);
       setSelectedOrderNumber("");
+      setSelectedColorId(0);
       setSelectedOrderIds([]);
       setBundleQuantities({});
       setSubmitSummary(null);
@@ -100,10 +103,29 @@ export function BundleForm({
     return orders.filter((order) => order.order_number === selectedOrderNumber);
   }, [orders, selectedOrderNumber]);
 
+  // Colors that actually exist under the selected order number.
+  const availableColors = useMemo(() => {
+    const byId = new Map<number, string>();
+    matchedOrders.forEach((order) => {
+      if (order.color) byId.set(order.color, order.color_name ?? "");
+    });
+
+    return Array.from(byId, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+  }, [matchedOrders]);
+
+  // Rows shown on the right: order number, narrowed by color when one is picked.
+  const filteredOrders = useMemo(() => {
+    if (!selectedColorId) return matchedOrders;
+    return matchedOrders.filter((order) => order.color === selectedColorId);
+  }, [matchedOrders, selectedColorId]);
+
   const selectedOrders = useMemo(() => {
     const selectedSet = new Set(selectedOrderIds);
-    return matchedOrders.filter((order) => selectedSet.has(order.id));
-  }, [matchedOrders, selectedOrderIds]);
+    // Derived from the visible rows so a hidden row can never be submitted.
+    return filteredOrders.filter((order) => selectedSet.has(order.id));
+  }, [filteredOrders, selectedOrderIds]);
 
   const canSubmit =
     watchedSpread > 0 &&
@@ -119,8 +141,17 @@ export function BundleForm({
     const orderNumber = foundOrder?.order_number || "";
 
     setSelectedOrderNumber(orderNumber);
+    // A color from the previous order does not apply to the new one.
+    setSelectedColorId(0);
     setSelectedOrderIds([]);
     setBundleQuantities({});
+    setSubmitSummary(null);
+  };
+
+  const handleSelectColor = (colorId: number) => {
+    setSelectedColorId(colorId);
+    // Drop row selections so nothing stays selected while hidden.
+    setSelectedOrderIds([]);
     setSubmitSummary(null);
   };
 
@@ -154,10 +185,11 @@ export function BundleForm({
   };
 
   const handleSelectAllMatched = () => {
-    const ids = matchedOrders.map((order) => order.id);
+    // Only the rows currently visible under the active color filter.
+    const ids = filteredOrders.map((order) => order.id);
 
     const qtyMap: Record<number, number> = {};
-    matchedOrders.forEach((order) => {
+    filteredOrders.forEach((order) => {
       qtyMap[order.id] = bundleQuantities[order.id] ?? order.quantity ?? 0;
     });
 
@@ -286,6 +318,42 @@ export function BundleForm({
                       />
                     </div>
 
+                    <div className="space-y-2">
+                      <FormLabel
+                        className={
+                          !selectedOrderNumber ? "text-muted-foreground" : ""
+                        }
+                      >
+                        Color
+                      </FormLabel>
+                      <ColorCombobox
+                        value={selectedColorId}
+                        onValueChangeAction={handleSelectColor}
+                        options={availableColors}
+                        placeholder={
+                          selectedOrderNumber
+                            ? "All colors"
+                            : "Select an order first"
+                        }
+                        isLoading={isLoadingOrders}
+                        disabled={
+                          !selectedOrderNumber || isLoading || isSubmittingMulti
+                        }
+                        className="w-full"
+                      />
+                      {selectedOrderNumber && availableColors.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {availableColors.length} color
+                          {availableColors.length > 1 ? "s" : ""} in this order
+                          {selectedColorId
+                            ? ` • showing ${filteredOrders.length} row${
+                                filteredOrders.length === 1 ? "" : "s"
+                              }`
+                            : ""}
+                        </p>
+                      )}
+                    </div>
+
                     <FormField
                       control={form.control}
                       name="bundle_size"
@@ -315,7 +383,7 @@ export function BundleForm({
                         size="sm"
                         onClick={handleSelectAllMatched}
                         disabled={
-                          matchedOrders.length === 0 ||
+                          filteredOrders.length === 0 ||
                           isLoading ||
                           isSubmittingMulti
                         }
@@ -384,15 +452,40 @@ export function BundleForm({
                       </Alert>
                     )}
 
-                    {matchedOrders.length > 0 && (
+                    {matchedOrders.length > 0 &&
+                      filteredOrders.length === 0 &&
+                      selectedColorId > 0 && (
+                        <Alert>
+                          <AlertDescription className="flex flex-col items-start gap-2">
+                            <span>
+                              Ei color e kono row nei. Onno color select koro ba
+                              filter clear koro.
+                            </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSelectColor(0)}
+                            >
+                              Clear color
+                            </Button>
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                    {filteredOrders.length > 0 && (
                       <>
                         <div className="flex items-center justify-between">
                           <h4 className="text-sm font-medium">Matching Order Rows</h4>
+                          <span className="text-xs text-muted-foreground">
+                            {filteredOrders.length} of {matchedOrders.length} row
+                            {matchedOrders.length === 1 ? "" : "s"}
+                          </span>
                         </div>
 
                         <ScrollArea className="h-[420px] pr-2">
                           <div className="space-y-2">
-                            {matchedOrders.map((order: Order) => {
+                            {filteredOrders.map((order: Order) => {
                               const checked = selectedOrderIds.includes(order.id);
                               const currentQty =
                                 bundleQuantities[order.id] ?? order.quantity ?? 0;

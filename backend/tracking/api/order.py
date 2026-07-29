@@ -8,9 +8,11 @@ from tracking.models import Order
 class OrderListCreateView(BaseListCreateView):
     """List all orders or create a new order."""
 
-    queryset = Order.objects.select_related(
-        "style__buyer", "style__season", "size", "color"
-    ).all()
+    queryset = (
+        Order.objects.select_related("style__buyer", "style__season", "size", "color")
+        .prefetch_related("style__parts")
+        .all()
+    )
     serializer_class = OrderSerializer
     filter_backends = [*BaseListCreateView.filter_backends, DjangoFilterBackend]
     search_fields = [
@@ -35,9 +37,11 @@ class OrderListCreateView(BaseListCreateView):
 class OrderDetailView(BaseDetailView):
     """Retrieve, update or delete an order."""
 
-    queryset = Order.objects.select_related(
-        "style__buyer", "style__season", "size", "color"
-    ).all()
+    queryset = (
+        Order.objects.select_related("style__buyer", "style__season", "size", "color")
+        .prefetch_related("style__parts")
+        .all()
+    )
     serializer_class = OrderSerializer
 
     def perform_destroy(self, instance):

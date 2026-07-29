@@ -358,6 +358,10 @@ class Bundle(BaseModel):
                 fields=["assigned_sewing_line", "order"],
                 name="bundle_assigned_order_idx",
             ),
+            # Bundle list endpoint: default ordering and column filters.
+            models.Index(fields=["-created_at"], name="bundle_created_at_desc_idx"),
+            models.Index(fields=["status"], name="bundle_status_idx"),
+            models.Index(fields=["order", "status"], name="bundle_order_status_idx"),
         ]
 
     @property

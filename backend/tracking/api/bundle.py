@@ -34,7 +34,7 @@ class BundleListCreateView(BaseListCreateView):
     """List bundles or create bundle sets for a style."""
 
     queryset = Bundle.objects.select_related(
-        "order__style", "order__size", "order__color", "part"
+        "order__style", "order__size", "order__color", "part", "spread"
     ).all()
     serializer_class = BundleSerializer
     filter_backends = [*BaseListCreateView.filter_backends, DjangoFilterBackend]
@@ -106,7 +106,7 @@ class BundleDetailView(BaseDetailView):
     """Retrieve, update or delete a bundle."""
 
     queryset = Bundle.objects.select_related(
-        "order__style", "order__size", "order__color", "part"
+        "order__style", "order__size", "order__color", "part", "spread"
     ).all()
     serializer_class = BundleSerializer
 

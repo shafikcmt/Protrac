@@ -223,13 +223,16 @@ const {
           data={bundles}
           config={tableConfig}
         />
-        <BundleForm
-          open={formOpen}
-          onOpenChangeAction={setFormOpen}
-          onSubmitAction={handleFormSubmit}
-          onAfterBulkSubmitAction={refreshBundles}
-          isLoading={isBulkCreating}
-        />{" "}
+        {/* Mounted only while open so its order list is not fetched on page load. */}
+        {formOpen && (
+          <BundleForm
+            open={formOpen}
+            onOpenChangeAction={setFormOpen}
+            onSubmitAction={handleFormSubmit}
+            onAfterBulkSubmitAction={refreshBundles}
+            isLoading={isBulkCreating}
+          />
+        )}{" "}
         <BundleDeleteDialog
           open={deleteDialogOpen}
           onOpenChange={setDeleteDialogOpen}
