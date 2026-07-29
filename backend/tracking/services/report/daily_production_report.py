@@ -272,40 +272,58 @@ def get_daily_production_report_data(
         lines_processed += 1
         order_ids_on_line = [o.id for o in line_orders]
 
+        # Preload orders marked complete on this line — manually by an operator or
+        # automatically when a new style superseded them (single source of truth
+        # in line_visibility). A completion only takes effect the day *after* it
+        # was recorded, so the day it was made still reports the real scan data;
+        # see line_visibility.get_completed_order_ids.
+        #
+        # This MUST stay above the active-order election below: a completed style
+        # is finished on the line and cannot be what the line is currently running.
+        completed_order_ids = get_completed_order_ids(
+            line, as_of_date=report_date
+        ) & set(order_ids_on_line)
+
         # Determine the active order: order with the most recently issued bundle
         # on this line. Direct Bundle query (no per-order annotate/first).
+        #
+        # Completed orders are excluded. Without that, a style that was marked
+        # complete but still has the line's newest issued bundle wins this election
+        # while being dropped from the rendered rows below — so every *other* style
+        # on the line is judged "an older style pending transition" against a style
+        # that never appears in the report. That inverted Sewing-3: 799225, the
+        # style actually running, was flagged as the leftover of 792566, which had
+        # been manually completed three days earlier.
+        election_order_ids = [
+            oid for oid in order_ids_on_line if oid not in completed_order_ids
+        ]
         active_order_id = (
             Bundle.objects.filter(
                 assigned_sewing_line=line,
                 issued_at__isnull=False,
                 issued_at__lte=day_end,
-                order_id__in=order_ids_on_line,
+                order_id__in=election_order_ids,
             )
             .order_by("-issued_at")
             .values_list("order_id", flat=True)
             .first()
+            if election_order_ids
+            else None
         )
-
-        # Preload orders marked complete on this line — manually by an operator or
-        # automatically when a new style superseded them (single source of truth
-        # in line_visibility). For past-date reports only completions made on or
-        # before report_date count, so history is not rewritten by a completion
-        # recorded later.
-        completed_order_ids = get_completed_order_ids(
-            line, as_of_date=report_date
-        ) & set(order_ids_on_line)
 
         # When the caller asks to reveal hidden rows, map each completed order on
         # this line to its LineStyleCompletion id so the row can carry a
         # completion_id (used by the UI's "Unhide" action). Mirrors the as-of-date
-        # guard used by get_completed_order_ids so history is not rewritten.
+        # guard used by get_completed_order_ids — strictly before report_date — so
+        # a row is never offered an "Unhide" action on a date where it is not
+        # actually hidden.
         completion_id_by_order: Dict[int, int] = {}
         if include_hidden and completed_order_ids:
             comp_qs = LineStyleCompletion.objects.filter(
                 production_line=line, order_id__in=completed_order_ids
             )
             if report_date is not None:
-                comp_qs = comp_qs.filter(created_at__date__lte=report_date)
+                comp_qs = comp_qs.filter(created_at__date__lt=report_date)
             completion_id_by_order = dict(comp_qs.values_list("order_id", "id"))
 
         # Style of the currently-active order. A "pending transition" is only a

@@ -39,6 +39,7 @@ from tracking.tests.conftest import (
     StyleFactory,
     BundleFactory,
     PartFactory,
+    backdate_completion,
 )
 
 
@@ -128,7 +129,11 @@ class TestV3PendingTransitionStaysVisible:
 
     def test_manual_completion_removes_the_old_style(self, scenario):
         line, order_old = scenario["line"], scenario["order_old"]
-        LineStyleCompletion.objects.create(production_line=line, order=order_old)
+        # Backdated: the point here is that an explicit completion is what removes
+        # the style, not when that removal starts applying.
+        backdate_completion(
+            LineStyleCompletion.objects.create(production_line=line, order=order_old)
+        )
 
         row = self._row(line)
         # Explicit completion is the only thing that hides it -> NEW only.
@@ -174,6 +179,14 @@ class TestV3PendingTransitionStaysVisible:
         assert self._row(line)["active_style_names"] == ["NEW", "OLD"]
 
         assert reconcile_order_completion(line, order_old) is True
+
+        # The trigger wrote the completion, but a completion only hides from the
+        # day after it was recorded — today still shows the output that was just
+        # QC-passed. Backdate it to assert the hide itself, which is what this
+        # test is about.
+        backdate_completion(
+            LineStyleCompletion.objects.get(production_line=line, order=order_old)
+        )
 
         row = self._row(line)
         assert row["active_style_names"] == ["NEW"]

@@ -41,6 +41,22 @@ orders. All callers should use:
   * :func:`get_inactive_order_ids_for_heatmap` — hidden ∪ delivery-expired
     (Conditions 1+1b+3), for the heatmap surfaces ONLY
 
+**When a completion starts hiding** depends on how the caller asks, and the two
+modes differ on purpose:
+
+  * no ``as_of_date`` (``None``) — hides immediately. The live scan surfaces need
+    "Mark Complete" to take the style off the screen right away.
+  * an ``as_of_date`` — hides from the **next** calendar day. A completion made
+    during day D leaves day D's report showing exactly what was scanned that day.
+    Completions are forward-looking; they must not rewrite finished production.
+
+Which mode a surface gets follows from whether it passes a date, not from whether
+it feels "live" — the V3 dashboard passes ``today()`` and so takes the next-day
+path. See :func:`get_completed_order_ids` for the per-caller breakdown.
+
+Do not collapse the two into one rule — see :func:`get_completed_order_ids` for
+the incident that produced this split.
+
 The functions are intentionally cheap (a small fixed number of grouped queries
 per line) so they can be dropped into the existing per-line loops without
 re-introducing N+1 queries.
@@ -213,13 +229,48 @@ def get_completed_order_ids(
     they end (AUTO rows are cleared when the style is re-issued on the line;
     MANUAL rows are not), never in whether they hide.
 
-    When ``as_of_date`` is given, only completions recorded on or before that
-    date count — so historical (past-date) reports are not retroactively
-    affected by a completion made later.
+    ``as_of_date`` selects between two deliberately different behaviours:
+
+    * **None — "hide immediately."** No date filter at all: every recorded
+      completion hides. This is what the *live* scan surfaces want — when an
+      operator presses "Mark Complete", the style must disappear from the kiosk
+      and scan screens straight away. Callers: the assembly part-receive /
+      garment-issue scans, the bundle-issue scan, and
+      ``sewing_dashboard_v2._exclude_completed`` (the bundle/garment querysets).
+    * **A date — "hide from the NEXT day onward."** Only completions created
+      *strictly before* ``as_of_date`` count. A completion made during day D does
+      **not** hide anything on day D's report. Callers: the daily production
+      report, the assembly / sewing-QC daily summaries, and the V3 dashboard.
+
+    The V3 dashboard is worth spelling out, because it is easy to assume it takes
+    the immediate path. It does not: ``get_sewing_dashboard_v2_data`` defaults
+    ``date`` to ``today()`` and derives its DPR ``report_date`` from it, so that
+    value is never ``None`` and V3's row-level figures (``total_input``,
+    ``total_output``, ``active_style_names``) always follow the next-day rule. A
+    style marked complete today therefore stays on the V3 board until tomorrow.
+    That is accepted: V3 is a reporting board, and same-day removal there is not
+    worth reintroducing a second effectivity rule. Note this makes V3 internally
+    split — ``_exclude_completed`` hides its querysets immediately while the
+    DPR-derived numbers on the same screen do not.
+
+    The second rule is the important one. The filter used to be
+    ``created_at__date__lte``, which made a completion retroactive to the start of
+    its own date: an order completed at 14:09 on the 28th had its entire 28th of
+    July erased from the 28th's report. On Sewing-5 that silently dropped 142
+    QC-passed garments — the report showed Output Day 0 against 142 actually
+    scanned — because the twelve orders that did the day's work were auto-completed
+    a few hours before the 22:00 mail went out. A completion records that a style
+    is finished *going forward*; it must never rewrite production that already
+    happened.
+
+    **The asymmetry between the two modes is intentional — do not "harmonise" it.**
+    Making ``None`` mean ``today()`` would delay hiding on the scan floor by a full
+    day; making the dated path immediate would re-introduce the erasure above.
     """
     qs = LineStyleCompletion.objects.filter(production_line=line)
     if as_of_date is not None:
-        qs = qs.filter(created_at__date__lte=as_of_date)
+        # Strictly before: the completion's own date still shows real production.
+        qs = qs.filter(created_at__date__lt=as_of_date)
     return set(qs.values_list("order_id", flat=True))
 
 
@@ -233,6 +284,11 @@ def get_hidden_order_ids_for_line(
     Hidden = a recorded ``LineStyleCompletion`` (MANUAL or AUTO), as of date.
     Used by every surface (daily report, kiosk v3, heatmap, assembly & sewing-QC
     scan) so a style hidden in one place is hidden everywhere.
+
+    ``as_of_date`` carries the same two-mode meaning as
+    :func:`get_completed_order_ids` — omitted (``None``) hides immediately for the
+    live scan surfaces, a date hides only from the day *after* the completion was
+    recorded. See that function's docstring; the asymmetry is deliberate.
 
     **This no longer computes completeness.** It used to also hide any order
     whose input was fully output *at query time*, which false-hid live styles:

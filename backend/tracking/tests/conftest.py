@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 import pytest
 import factory
+from django.utils import timezone
 from rest_framework.test import APIClient
 from factory.django import DjangoModelFactory
 from accounts.tests.conftest import UserFactory
@@ -146,6 +149,33 @@ class QualityCheckFactory(DjangoModelFactory):
 
     garment = factory.SubFactory(GarmentFactory)
     status = factory.Iterator([choice[0] for choice in QualityCheckStatus.choices])
+
+
+# --- Helpers ---
+
+
+def backdate_completion(completion_or_qs, days: int = 1):
+    """Age a ``LineStyleCompletion`` so it is in force on *today's* report.
+
+    A completion only hides from the day **after** it was recorded — the day it
+    was made still reports the real scan data (see
+    ``line_visibility.get_completed_order_ids``). ``created_at`` is
+    ``auto_now_add``, so a completion built in a test is stamped today and is
+    therefore *not* yet hiding anything today.
+
+    Tests that mean "an already-established completion hides this style" must
+    backdate it. Tests that mean "completing today leaves today's data intact"
+    should NOT use this — assert the visible behaviour directly.
+    """
+    from tracking.models import LineStyleCompletion
+
+    qs = (
+        completion_or_qs
+        if hasattr(completion_or_qs, "update")
+        else LineStyleCompletion.objects.filter(pk=completion_or_qs.pk)
+    )
+    qs.update(created_at=timezone.now() - timedelta(days=days))
+    return completion_or_qs
 
 
 # --- Test Data ---

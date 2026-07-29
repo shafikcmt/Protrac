@@ -22,6 +22,7 @@ from tracking.tests.conftest import (
     BuyerFactory,
     DefectFactory,
     PartFactory,
+    backdate_completion,
 )
 
 
@@ -414,9 +415,12 @@ class TestDailyProductionReport:
         baseline_summary = baseline.data["summary"]
 
         # --- Mark hidden_order complete on this line ---
+        # Backdated: a completion takes effect the day *after* it is recorded, and
+        # this test is about the include_hidden mechanism, not about effectivity.
         completion = LineStyleCompletion.objects.create(
             production_line=sewing_line, order=hidden_order
         )
+        backdate_completion(completion)
 
         # --- Default (include_hidden absent): hidden row is gone ---
         default_resp = authenticated_client.get(url)
@@ -580,8 +584,11 @@ class TestActiveStyleNotAutoHidden:
         order = self._make_caught_up_active_style(line, quantity=100, fed=10)
 
         # Manual completion must win over the active-style guard: the manual-hide
-        # check runs before the completeness guard.
-        LineStyleCompletion.objects.create(production_line=line, order=order)
+        # check runs before the completeness guard. Backdated so the completion is
+        # already in force today — effectivity is covered separately.
+        backdate_completion(
+            LineStyleCompletion.objects.create(production_line=line, order=order)
+        )
 
         data = get_daily_production_report_data(production_line_id=line.id)
         assert self._row_for(data, order.id) is None, (

@@ -31,6 +31,7 @@ from tracking.tests.conftest import (
     DefectFactory,
     StyleFactory,
     SizeFactory,
+    backdate_completion,
 )
 
 
@@ -432,7 +433,11 @@ class TestSewingQCDailySummaryOrderGroups:
         before = get_sewing_qc_daily_summary(setup["user"])
         assert len(before["order_groups"]) == 1
 
-        LineStyleCompletion.objects.create(production_line=line, order=order)
+        # Backdated: a completion hides from the day after it is recorded; this
+        # test is about the exclusion, not about when it starts applying.
+        backdate_completion(
+            LineStyleCompletion.objects.create(production_line=line, order=order)
+        )
 
         after = get_sewing_qc_daily_summary(setup["user"])
         assert after["order_groups"] == []

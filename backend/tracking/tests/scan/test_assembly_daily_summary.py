@@ -21,6 +21,7 @@ from tracking.tests.conftest import (
     OrderFactory,
     StyleFactory,
     SizeFactory,
+    backdate_completion,
 )
 
 DHAKA = ZoneInfo("Asia/Dhaka")
@@ -170,9 +171,12 @@ class TestAssemblyDailySummaryHourly:
         assert sum(r["bundles_received"] for r in before["hourly"]) == 1
         assert sum(r["assembly_complete"] for r in before["hourly"]) == 1
 
-        # Hide the order on this line.
-        LineStyleCompletion.objects.create(
-            production_line=setup["line"], order=setup["order"]
+        # Hide the order on this line. Backdated: a completion takes effect the
+        # day after it is recorded, and this test is about the exclusion itself.
+        backdate_completion(
+            LineStyleCompletion.objects.create(
+                production_line=setup["line"], order=setup["order"]
+            )
         )
 
         after = get_assembly_daily_summary(setup["user"])
@@ -365,8 +369,10 @@ class TestAssemblyDailySummaryOrderGroups:
         before = get_assembly_daily_summary(setup["user"])
         assert len(before["order_groups"]) == 1
 
-        LineStyleCompletion.objects.create(
-            production_line=setup["line"], order=order
+        backdate_completion(
+            LineStyleCompletion.objects.create(
+                production_line=setup["line"], order=order
+            )
         )
 
         after = get_assembly_daily_summary(setup["user"])

@@ -32,6 +32,7 @@ from tracking.tests.conftest import (
     BuyerFactory,
     BundleFactory,
     GarmentFactory,
+    backdate_completion,
 )
 
 DHAKA = ZoneInfo("Asia/Dhaka")
@@ -133,7 +134,11 @@ class TestDashboardInputParity:
         BundleFactory(order=order_new, assigned_sewing_line=line,
                       issued_at=now - timedelta(hours=1), garment_quantity=200)
 
-        LineStyleCompletion.objects.create(production_line=line, order=order_old)
+        # Backdated: this test is about Total Input honouring the hidden rule, not
+        # about when a completion starts taking effect.
+        backdate_completion(
+            LineStyleCompletion.objects.create(production_line=line, order=order_old)
+        )
 
         row = get_sewing_dashboard_v2_data(production_line_id=line.id)[0]
 
