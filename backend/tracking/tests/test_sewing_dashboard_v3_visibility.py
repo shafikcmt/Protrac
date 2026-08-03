@@ -121,9 +121,11 @@ class TestV3PendingTransitionStaysVisible:
 
     def test_overlap_is_reported_as_a_badge_not_an_exclusion(self, scenario):
         row = self._row(scenario["line"])
-        # The badge still fires (1 old style, qty 100 - output 10 pending)...
+        # The badge still fires. Membership is order-quantity based (qty 100 -
+        # output 10 > 0), while the quantity shown is work in progress on the
+        # floor: input 50 - output 10 = 40.
         assert row["pending_old_style_count"] == 1
-        assert row["pending_old_pending_qty"] == 90
+        assert row["pending_old_pending_qty"] == 40
         # ...while the same style remains counted in the headline figures.
         assert row["total_input"] == 90
 

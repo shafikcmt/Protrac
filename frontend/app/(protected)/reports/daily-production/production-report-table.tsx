@@ -1,6 +1,14 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   MoreHorizontal,
   CheckCircle2,
@@ -88,6 +96,24 @@ export function ProductionReportTable({
   const isCompleting = markComplete.isPending;
   const isUnhiding = undoComplete.isPending;
 
+  // A completion takes effect the day AFTER it is recorded: the backend only
+  // counts completions created strictly before the report date
+  // (line_visibility.get_completed_order_ids), so the day it is made still
+  // reports exactly what was scanned that day. Marking a style complete
+  // therefore leaves it on today's report, which reads as "the button did
+  // nothing" unless we say so — the confirmation and the toast both name the
+  // date it actually disappears.
+  const tomorrowLabel = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }, []);
+
   // ── Shrink-to-fit font sizing ──
   // Render the 30-column table as large as it can be while still fitting the
   // container width — never a horizontal scrollbar, never fewer columns. At the
@@ -152,24 +178,48 @@ export function ProductionReportTable({
     return () => ro.disconnect();
   }, [recomputeFit]);
 
+  // Each item is a separate order (the sibling sizes/colors grouped into this
+  // row), so each one is marked independently: a failure on one must not abort
+  // the rest of the group. A single throwing await used to leave the remaining
+  // siblings silently unmarked.
   const handleMarkComplete = async () => {
     if (!pendingCompletion) return;
-    try {
-      for (const item of pendingCompletion.items) {
+    const { items, styleName, lineName } = pendingCompletion;
+    let succeeded = 0;
+    const failures: string[] = [];
+
+    for (const item of items) {
+      try {
         await markComplete.mutateAsync({
           production_line: item.production_line_id,
           order: item.order_id,
         });
+        succeeded += 1;
+      } catch (e: any) {
+        const label = [item.size, item.color].filter(Boolean).join("/");
+        failures.push(
+          `${label || `order ${item.order_id}`}: ${e?.message ?? "Unknown error"}`
+        );
       }
-      toast.success(
-        `${pendingCompletion.styleName} on ${pendingCompletion.lineName} marked complete`
-      );
-      refetch?.();
-    } catch (e: any) {
-      toast.error(`Failed to hide: ${e?.message ?? "Unknown error"}`);
-    } finally {
-      setPendingCompletion(null);
     }
+
+    if (failures.length === 0) {
+      toast.success(
+        `${styleName} on ${lineName} marked complete (${succeeded}/${items.length})`,
+        {
+          description: `Hidden from the report starting tomorrow (${tomorrowLabel}). Today's report still shows the work scanned today.`,
+        }
+      );
+    } else if (succeeded > 0) {
+      toast.warning(
+        `${styleName} on ${lineName}: ${succeeded}/${items.length} marked complete, ${failures.length} failed — ${failures[0]}`
+      );
+    } else {
+      toast.error(`Failed to hide: ${failures[0]}`);
+    }
+
+    refetch?.();
+    setPendingCompletion(null);
   };
 
   const handleUnhide = async () => {
@@ -363,14 +413,18 @@ export function ProductionReportTable({
   const formatNumber = (num: number) => (Number(num) || 0).toLocaleString();
   const formatPercentage = (num: number) => `${(Number(num) || 0).toFixed(2)}%`;
   // Explicit, human-readable pending-transition message: names the old style,
-  // the exact un-QC'd pending qty, and the newer style that started — so the
-  // ⚠ warning reads as a real status, not a suspected bug.
+  // the exact pending qty, and the newer style that started — so the ⚠ warning
+  // reads as a real status, not a suspected bug. Pending is cumulative input
+  // minus cumulative output (the backend's pending_quantity): pieces sitting in
+  // the line, not yet QC-passed. Whether the row is flagged at all is a separate,
+  // order-quantity based decision made by the backend (is_pending_transition), so
+  // a flagged row can legitimately show 0 pcs pending.
   const pendingMessage = (o: any) => {
     const oldStyle = o.style || "previous style";
     const qty = formatNumber(o.pending_quantity || 0);
     return o.active_style_name
-      ? `Style ${oldStyle}: ${qty} pcs not yet QC-passed while ${o.active_style_name} has started on this line.`
-      : `Style ${oldStyle}: ${qty} pcs not yet QC-passed while a newer style has started on this line.`;
+      ? `Style ${oldStyle}: ${qty} pcs in the line not yet QC-passed, while ${o.active_style_name} has started on this line.`
+      : `Style ${oldStyle}: ${qty} pcs in the line not yet QC-passed, while a newer style has started on this line.`;
   };
   const getSizeValue = (item: any) => item?.size || "-";
   const getColorValue = (item: any) => item?.color || "-";
@@ -1016,6 +1070,12 @@ export function ProductionReportTable({
                 Sewing Dashboard totals, but will remain visible on Heatmap and
                 Finishing Dashboard until its delivery date passes. This can be
                 undone anytime.
+              </p>
+              <p className="mt-2">
+                <strong>It stays on today&apos;s report.</strong> Completions
+                take effect the next day, so today&apos;s scanned production is
+                never rewritten. It will be hidden from{" "}
+                <strong>{tomorrowLabel}</strong> onward.
               </p>
               {(pendingCompletion?.items?.length ?? 0) > 1 && (
                 <ul className="mt-2 list-disc pl-4 text-sm space-y-1">

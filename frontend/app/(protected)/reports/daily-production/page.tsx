@@ -123,6 +123,19 @@ export default function DailyProductionPage() {
   const completionsQuery = useLineStyleCompletions();
   const completions: LineStyleCompletionRecord[] = completionsQuery.data ?? [];
 
+  // A completion only hides a style from the day AFTER it was recorded — the
+  // backend counts completions created strictly before the report date
+  // (line_visibility.get_completed_order_ids), so the day it was made still
+  // reports the real scan data. Without this indicator a row recorded today
+  // looks identical to one from last week while behaving completely differently.
+  const isInForce = (createdAt: string) => {
+    const recorded = new Date(createdAt);
+    recorded.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return recorded < today;
+  };
+
   const handleUndo = async () => {
     if (!undoTarget) return;
     setIsUndoing(true);
@@ -284,6 +297,7 @@ export default function DailyProductionPage() {
                         <TableHead>Color</TableHead>
                         <TableHead>Completed By</TableHead>
                         <TableHead>Date</TableHead>
+                        <TableHead>Status</TableHead>
                         <TableHead />
                       </TableRow>
                     </TableHeader>
@@ -298,6 +312,20 @@ export default function DailyProductionPage() {
                           <TableCell className="text-sm">{c.completed_by_name ?? "-"}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {new Date(c.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            {isInForce(c.created_at) ? (
+                              <Badge variant="secondary" className="text-xs">
+                                Hidden
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-xs text-amber-600 border-amber-500/40 dark:text-amber-400"
+                              >
+                                Hides tomorrow
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Button

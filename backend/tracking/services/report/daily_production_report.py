@@ -23,7 +23,8 @@ from tracking.models.constants import LineType, GarmentStatus
 from tracking.models.constants import QualityCheckStatus
 from tracking.models import Scan as TrackingScan
 from tracking.services.line_visibility import (
-    pending_quantity as _pending_quantity,
+    pending_quantity,
+    remaining_against_order_quantity,
     get_completed_order_ids,
 )
 
@@ -805,9 +806,25 @@ def _build_order_row(
             return None
 
     is_active_order = oid == active_order_id
-    # Remaining pieces still to be produced for this order, measured against the
-    # ordered quantity (never negative).
-    pending_qty = max(int(order.quantity or 0) - cumulative_output, 0)
+
+    # Two different quantities, deliberately not the same number:
+    #
+    #   pending_qty   — REPORTED. Work in progress on the floor: pieces fed into
+    #                   the line that have not come out of sewing QC
+    #                   (cumulative input − cumulative output).
+    #   remaining_qty — GATE. Pieces of the ORDER still to run
+    #                   (order quantity − cumulative output). Only this one may
+    #                   drive flags/visibility.
+    #
+    # They must not be collapsed. Input arrives in batches over several days, so
+    # a live style sits at pending_qty == 0 whenever its current batch is caught
+    # up; gating on that is the query-time rule that made running lines vanish
+    # (Sewing-5). See line_visibility.pending_quantity /
+    # remaining_against_order_quantity.
+    pending_qty = pending_quantity(cumulative_input, cumulative_output)
+    remaining_qty = remaining_against_order_quantity(
+        order.quantity, cumulative_output
+    )
 
     # Pending alert (today only): this is an OLDER style on a line where a newer
     # style is now the active run (most recently issued bundle), and this older
@@ -818,7 +835,7 @@ def _build_order_row(
         report_date == today()
         and active_style_id is not None
         and getattr(order, "style_id", None) != active_style_id
-        and pending_qty > 0
+        and remaining_qty > 0
     )
 
     # "Mark Complete" is offered for a pending old style on the live (today)
@@ -833,9 +850,13 @@ def _build_order_row(
 
     remarks_parts: List[str] = []
     if is_pending_transition:
+        # Both figures are spelled out because they answer different questions:
+        # `pending` is what is on the floor now, `still to run` is what is left
+        # of the order.
         remarks_parts.append(
-            f"Old style pending: order qty {order.quantity or 0}, "
-            f"output {cumulative_output}, pending {pending_qty} pcs"
+            f"Old style pending: input {cumulative_input}, "
+            f"output {cumulative_output}, pending {pending_qty} pcs "
+            f"(order qty {order.quantity or 0}, {remaining_qty} still to run)"
         )
         remarks_parts.append("Newer style started on this line")
         if needs_manual_complete:

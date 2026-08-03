@@ -164,7 +164,8 @@ class OrderProductionReportSerializer(serializers.Serializer):
     pending_quantity = serializers.IntegerField(
         required=False,
         default=0,
-        help_text="Cumulative input minus cumulative output (pieces still to be output)",
+        help_text="Cumulative input minus cumulative output (pieces in the line "
+        "not yet QC-passed)",
     )
     active_style_name = serializers.CharField(
         required=False,

@@ -594,3 +594,94 @@ class TestActiveStyleNotAutoHidden:
         assert self._row_for(data, order.id) is None, (
             "a manually-completed active style must still be hidden"
         )
+
+
+@pytest.mark.django_db
+class TestPendingQuantityFormula:
+    """`pending_quantity` reports WORK IN PROGRESS: cumulative input minus
+    cumulative output — pieces fed to the line that have not passed sewing QC.
+
+    It is deliberately NOT order quantity minus output. That second figure still
+    exists (``remaining_against_order_quantity``) and is what decides whether a
+    row is flagged as a pending transition; the two are kept apart so a live
+    style whose fed batch is momentarily caught up cannot be flagged/hidden out
+    of existence (the Sewing-5 incident).
+    """
+
+    def _row_for(self, data, order_id):
+        for line_data in data:
+            for row in line_data["orders"]:
+                if row["order_id"] == order_id:
+                    return row
+        return None
+
+    def test_helper_is_input_minus_output(self):
+        from tracking.services.line_visibility import pending_quantity
+
+        # Input 2266, output 2021 -> 245 in the line, NOT 879 (order qty based).
+        assert pending_quantity(2266, 2021) == 245
+        # Never negative, even if output bookkeeping slightly overshoots input.
+        assert pending_quantity(2021, 2266) == 0
+
+    def test_order_quantity_helper_is_the_separate_gate(self):
+        from tracking.services.line_visibility import (
+            remaining_against_order_quantity,
+        )
+
+        # The same scenario measured against the ORDER: 2900 - 2021 = 879. This
+        # is the number that gates is_pending_transition, and it must NOT be what
+        # `pending_quantity` reports.
+        assert remaining_against_order_quantity(2900, 2021) == 879
+        assert remaining_against_order_quantity(2000, 2266) == 0
+
+    def test_report_row_pending_is_input_minus_output(self):
+        """DPR row: qty 2900, input 2266, output 2021 -> pending 245."""
+        from tracking.services.report.daily_production_report import (
+            get_daily_production_report_data,
+        )
+
+        line = ProductionLineFactory(line_type=LineType.SEWING)
+        order = OrderFactory(quantity=2900)
+        _issue_bundle(order, line, quantity=2266)
+        _pass_sewing_qc(
+            list(order.garments.order_by("sequence_number")[:2021]), line
+        )
+
+        row = self._row_for(
+            get_daily_production_report_data(production_line_id=line.id), order.id
+        )
+
+        assert row is not None
+        assert row["input"] == 2266
+        assert row["output"]["cumulative"] == 2021
+        # 245 (in the line), not 879 (against the order quantity).
+        assert row["pending_quantity"] == 245
+
+    def test_pending_transition_flag_still_uses_order_quantity(self):
+        """A caught-up old style (pending 0) must STILL be flagged, because the
+        order has pieces left to run. Gating the flag on input-minus-output would
+        hide the "Mark Complete" affordance for exactly these rows."""
+        from tracking.services.report.daily_production_report import (
+            get_daily_production_report_data,
+        )
+
+        line = ProductionLineFactory(line_type=LineType.SEWING)
+        style_old, style_new = StyleFactory(name="OLD"), StyleFactory(name="NEW")
+        order_old = OrderFactory(quantity=500, style=style_old)
+        order_new = OrderFactory(quantity=200, style=style_new)
+
+        # OLD fed 40 and all 40 QC-passed -> input == output -> pending 0, but
+        # 460 of the order are still to run.
+        _issue_bundle(order_old, line, quantity=40)
+        _pass_sewing_qc(list(order_old.garments.order_by("sequence_number")), line)
+        # NEW issued last -> it is the line's active style, OLD is superseded.
+        _issue_bundle(order_new, line, quantity=50)
+
+        row = self._row_for(
+            get_daily_production_report_data(production_line_id=line.id),
+            order_old.id,
+        )
+
+        assert row is not None, "a caught-up old style must stay on the report"
+        assert row["pending_quantity"] == 0  # nothing on the floor
+        assert row["is_pending_transition"] is True  # but the order is unfinished

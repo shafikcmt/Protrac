@@ -9,6 +9,11 @@ class LineStyleCompletionView(APIView):
     """
     GET  /api/tracking/reports/line-style-completion/  — list all manual completions
     POST /api/tracking/reports/line-style-completion/  — mark a line+order as complete
+
+    The POST is idempotent: marking an already-recorded line+order complete
+    upgrades the existing (usually AUTO) row to MANUAL and answers 200 instead of
+    failing the unique_together validation. See
+    ``LineStyleCompletionSerializer.create``.
     """
 
     def get(self, request):
@@ -28,7 +33,13 @@ class LineStyleCompletionView(APIView):
         )
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            # 201 for a brand-new completion, 200 when an existing row was
+            # upgraded to MANUAL (the idempotent path).
+            created = getattr(serializer, "instance_created", True)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

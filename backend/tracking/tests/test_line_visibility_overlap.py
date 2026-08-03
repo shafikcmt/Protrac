@@ -97,7 +97,9 @@ class TestStyleOverlapNoAutoHide:
         assert scenario["order_old"].id in ids
         row = next(o for o in alert["in_progress_orders"]
                    if o["order_id"] == scenario["order_old"].id)
-        assert row["pending_quantity"] == 90  # qty 100 - output 10
+        # Reported pending = work in progress: input 50 - output 10. (Membership
+        # in the alert is order-quantity based: qty 100 - output 10 > 0.)
+        assert row["pending_quantity"] == 40
         assert row["completion_id"] is None
 
     def test_manual_completion_hides_and_clears_alert(self, scenario):

@@ -95,8 +95,41 @@ def is_style_complete(cumulative_input: int, cumulative_output: int) -> bool:
 
 
 def pending_quantity(cumulative_input: int, cumulative_output: int) -> int:
-    """Pending pieces still to be output for a style (never negative)."""
+    """Pieces sitting IN the line, not yet sewing-QC passed (never negative).
+
+    ``pending = cumulative_input - cumulative_output`` — work in progress on the
+    floor, i.e. what has been fed into sewing but has not come out of sewing QC.
+    It is deliberately NOT measured against ``order.quantity``: pieces that were
+    never fed to the line are not "in the line".
+
+    **This is a REPORTING figure only.** Nothing about visibility, hiding or
+    alerting may be derived from it — see
+    :func:`remaining_against_order_quantity`, which is what the pending-transition
+    set and the report's "Mark Complete" affordance use, and which must stay
+    order-quantity based. Mixing the two is how the Sewing-5 auto-hide incident
+    happens: input arrives in batches, so a live style sits at
+    ``input == output`` (pending 0) whenever its current batch is caught up.
+    """
     return max(int(cumulative_input or 0) - int(cumulative_output or 0), 0)
+
+
+def remaining_against_order_quantity(
+    order_quantity: int, cumulative_output: int
+) -> int:
+    """Pieces of the ORDER still to be produced on a line (never negative).
+
+    ``remaining = order_quantity - cumulative_output``. This is the predicate
+    behind "is this old style still unfinished?" — :func:`_superseded_order_ids`,
+    and therefore the pending-transition set, the overlap alert's membership and
+    the report's ``is_pending_transition`` / ``needs_manual_complete`` flags.
+
+    It is kept separate from :func:`pending_quantity` on purpose. A style whose
+    fed batch is momentarily caught up has ``pending_quantity == 0`` while still
+    having hundreds of ordered pieces to run; deciding visibility on that zero is
+    exactly the query-time rule that made running lines vanish (see this module's
+    header and :mod:`tracking.services.line_completion`).
+    """
+    return max(int(order_quantity or 0) - int(cumulative_output or 0), 0)
 
 
 # ----------------------------
@@ -357,7 +390,15 @@ def _superseded_order_ids(
     as_of_date: Optional[date] = None,
 ) -> set:
     """Condition 2 order ids: a different style than the line's newest style that
-    still has pending pieces (``order.quantity - cumulative_output > 0``)."""
+    still has pieces to run (``order.quantity - cumulative_output > 0``).
+
+    Membership uses :func:`remaining_against_order_quantity`, NOT
+    :func:`pending_quantity`. The latter reports work-in-progress
+    (``input - output``) and drops to zero whenever the fed batch is caught up,
+    which would silently drop a live old style out of this set — and out of
+    :func:`get_visible_order_ids_for_line`, taking it off the assembly/scan
+    surfaces. That is the Sewing-5 auto-hide regression; keep the two apart.
+    """
     active_style_id = get_active_style_id_for_line(line, as_of_date=as_of_date)
     if active_style_id is None:
         return set()
@@ -368,8 +409,7 @@ def _superseded_order_ids(
         if order.style_id == active_style_id:
             continue
         cum_out = io.get(order.id, (0, 0))[1]
-        pending = max(int(order.quantity or 0) - int(cum_out or 0), 0)
-        if pending > 0:
+        if remaining_against_order_quantity(order.quantity, cum_out) > 0:
             superseded.add(order.id)
     return superseded
 
@@ -436,6 +476,14 @@ def get_style_overlap_alert(
              "pending_quantity", "completion_id"},        # completion_id set if already hidden
           ],
         }
+
+    Note the two different quantities at work: *membership* of
+    ``in_progress_orders`` is order-quantity based
+    (:func:`remaining_against_order_quantity`, via :func:`_superseded_order_ids`),
+    while the ``pending_quantity`` reported for each row is work-in-progress
+    (:func:`pending_quantity`, input − output). A row can therefore legitimately
+    appear with ``pending_quantity == 0``: the style still has ordered pieces to
+    run, but nothing is sitting on the floor right now.
     """
     from tracking.models import Style, LineStyleCompletion
 
@@ -468,14 +516,16 @@ def get_style_overlap_alert(
 
     in_progress = []
     for o in detail_orders:
-        cum_out = io.get(o.id, (0, 0))[1]
+        cum_in, cum_out = io.get(o.id, (0, 0))
         in_progress.append(
             {
                 "order_id": o.id,
                 "order_number": o.order_number,
                 "style": o.style.name if o.style_id else None,
                 "size": getattr(getattr(o, "size", None), "name", None),
-                "pending_quantity": pending_quantity(int(o.quantity or 0), cum_out),
+                # Reported figure: pieces on the floor (input − output).
+                # Membership above is order-quantity based — see the docstring.
+                "pending_quantity": pending_quantity(cum_in, cum_out),
                 "completion_id": completion_by_order.get(o.id),
             }
         )

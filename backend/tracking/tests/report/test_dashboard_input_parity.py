@@ -108,9 +108,11 @@ class TestDashboardInputParity:
         assert row["active_style_name"] == "NEW"  # back-compat scalar
         assert row["active_style_names"] == ["NEW", "OLD"]
 
-        # Old pending style is ALSO badged — an alert, not an exclusion.
+        # Old pending style is ALSO badged — an alert, not an exclusion. It is
+        # badged because the ORDER still has pieces to run (qty 500 - output 0),
+        # and the quantity reported is what sits in the line: input 154 - output 0.
         assert row["pending_old_style_count"] == 1
-        assert row["pending_old_pending_qty"] == 500
+        assert row["pending_old_pending_qty"] == 154
 
     def test_manually_completed_old_style_is_excluded(self):
         """The one thing that DOES remove an old style: explicit completion.

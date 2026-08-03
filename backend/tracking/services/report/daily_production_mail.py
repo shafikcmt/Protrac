@@ -413,16 +413,17 @@ def _remarks_text(order: dict) -> str:
     """Compact, single-line remarks so the Remarks column stays narrow and never
     forces a horizontal scrollbar. Built from structured fields (not by parsing
     the verbose backend string). Hidden rows keep the "Hidden" tag;
-    pending-transition rows collapse to e.g. "Old:1204→998, New:✓" (order qty →
-    cumulative output), with ", Mark" appended when manual completion is
+    pending-transition rows collapse to e.g. "Old:2266→2021, New:✓" (cumulative
+    input → cumulative output, i.e. the two numbers the reported pending quantity
+    is the difference of), with ", Mark" appended when manual completion is
     required. Non-transition rows stay blank. The full explanatory text still
     lives in the on-screen tooltip and the backend source string, untouched."""
     if order.get("is_hidden"):
         return "Hidden"
     if order.get("is_pending_transition"):
-        old_qty = int(_num(order.get("order_quantity")))
+        input_qty = int(_num(order.get("input")))
         output = int(_num((order.get("output") or {}).get("cumulative")))
-        text = f"Old:{old_qty}→{output}, New:✓"
+        text = f"Old:{input_qty}→{output}, New:✓"
         if order.get("needs_manual_complete"):
             text += ", Mark"
         return text

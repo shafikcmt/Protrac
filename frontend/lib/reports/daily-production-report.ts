@@ -155,16 +155,17 @@ const efficiency = (outputPart: number, input: number) =>
 // Compact, single-line remarks for the exports so the Remarks column stays
 // narrow and never forces a horizontal scrollbar. Built from structured fields
 // (not by parsing the verbose backend string). Hidden rows keep the "Hidden"
-// tag; pending-transition rows collapse to e.g. "Old:1204→998, New:✓" (order
-// qty → cumulative output), with ", Mark" appended when manual completion is
-// required. Non-transition rows stay blank. The full explanatory text still
-// lives in the on-screen tooltip and the backend source string, untouched.
+// tag; pending-transition rows collapse to e.g. "Old:2266→2021, New:✓"
+// (cumulative input → cumulative output, i.e. the two numbers the reported
+// pending quantity is the difference of), with ", Mark" appended when manual
+// completion is required. Non-transition rows stay blank. The full explanatory
+// text still lives in the on-screen tooltip and the backend source string.
 const remarksText = (order: any) => {
   if (order.is_hidden) return "Hidden";
   if (order.is_pending_transition) {
-    const oldQty = num(order.order_quantity);
+    const input = num(order.input);
     const output = num(order.output?.cumulative);
-    let text = `Old:${oldQty}→${output}, New:✓`;
+    let text = `Old:${input}→${output}, New:✓`;
     if (order.needs_manual_complete) text += ", Mark";
     return text;
   }
